@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Send, Loader2, ArrowLeft, Trophy, XCircle, MessageCircle } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Trophy, XCircle, MessageCircle, Mic, Square } from 'lucide-react';
 import { dialogueTraining, type DialogueTrainingRound } from '../../api/debrief';
+import { IFlytekAsrClient } from '../../utils/iflytek-asr';
 
 interface Round {
   round_number: number;
@@ -21,6 +22,38 @@ export function DialogueTrainingPage() {
   const [finished, setFinished] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 讯飞实时转写
+  const [isRecording, setIsRecording] = useState(false);
+  const asrClientRef = useRef<IFlytekAsrClient | null>(null);
+
+  const startRealtimeAsr = async () => {
+    const client = new IFlytekAsrClient({
+      onText: (_final: string, interim: string) => {
+        setInput((prev) => {
+          const base = prev.replace(/\s*\.\.\.$/, '');
+          return base + interim;
+        });
+      },
+      onError: (err: string) => {
+        setError(err);
+        setIsRecording(false);
+      },
+      onStatusChange: (status) => {
+        if (status === 'recording') setIsRecording(true);
+        else if (status === 'idle') setIsRecording(false);
+      },
+    });
+
+    asrClientRef.current = client;
+    await client.start();
+  };
+
+  const stopRealtimeAsr = () => {
+    asrClientRef.current?.stop();
+    asrClientRef.current = null;
+    setIsRecording(false);
+  };
 
   useEffect(() => {
     if (containerRef.current) {
@@ -253,6 +286,18 @@ export function DialogueTrainingPage() {
               className="flex-1 border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
               disabled={loading}
             />
+            <button
+              onClick={isRecording ? stopRealtimeAsr : startRealtimeAsr}
+              disabled={loading}
+              className={`p-2.5 rounded-xl shrink-0 ${
+                isRecording
+                  ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title={isRecording ? '停止录音' : '语音输入'}
+            >
+              {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
             <button
               onClick={handleSend}
               disabled={!input.trim() || loading}

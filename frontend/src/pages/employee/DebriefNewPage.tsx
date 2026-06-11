@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mic, Square, Loader2, Send, Upload, MessageSquare, PhoneCall } from 'lucide-react';
 import { createDebrief, type DebriefMode } from '../../api/debrief';
 import { ProductLineSelector } from '../../components/ProductLineSelector';
+import { IFlytekAsrClient } from '../../utils/iflytek-asr';
 
 export function DebriefNewPage() {
   const navigate = useNavigate();
@@ -16,7 +17,11 @@ export function DebriefNewPage() {
   const [error, setError] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const startRecording = async () => {
+  // 讯飞实时转写客户端引用
+  const asrClientRef = useRef<IFlytekAsrClient | null>(null);
+
+  // --- 原有的本地录音逻辑（保留用于 call_recording 模式） ---
+  const startLocalRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -41,10 +46,43 @@ export function DebriefNewPage() {
     }
   };
 
-  const stopRecording = () => {
+  const stopLocalRecording = () => {
     mediaRecorderRef.current?.stop();
     setRecording(false);
   };
+
+  // --- 讯飞实时转写逻辑（post_meeting 模式使用） ---
+  const asrFinalRef = useRef('');
+
+  const startRealtimeAsr = useCallback(async () => {
+    asrFinalRef.current = content;
+
+    const client = new IFlytekAsrClient({
+      onText: (final, interim, _isFinal) => {
+        setContent(asrFinalRef.current + final + (interim ? ' ' + interim : ''));
+      },
+      onError: (err) => {
+        setError(err);
+        setRecording(false);
+      },
+      onStatusChange: (status) => {
+        if (status === 'recording') {
+          setRecording(true);
+        } else if (status === 'idle') {
+          setRecording(false);
+        }
+      },
+    });
+
+    asrClientRef.current = client;
+    await client.start();
+  }, [content]);
+
+  const stopRealtimeAsr = useCallback(() => {
+    asrClientRef.current?.stop();
+    asrClientRef.current = null;
+    setRecording(false);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) setAudioFile(e.target.files[0]);
@@ -160,35 +198,24 @@ export function DebriefNewPage() {
               <p className="text-xs text-gray-400 mt-1">也可以只语音描述，不填文字</p>
             </div>
 
-            {/* Audio section */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                语音描述（可选）
+            {/* Audio section - 语音转文字 */}
+            <div className="flex items-center gap-3 -mt-4">
+              <button
+                onClick={recording ? stopRealtimeAsr : startRealtimeAsr}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${
+                  recording
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                }`}
+              >
+                {recording ? <><Square className="w-4 h-4" /> 停止转写</> : <><Mic className="w-4 h-4" /> 🎤 语音转文字</>}
+              </button>
+              <label className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 cursor-pointer flex-1 border border-gray-200">
+                <Upload className="w-4 h-4" /> 上传音频
+                <input type="file" accept="audio/*" className="hidden" onChange={handleFileChange} />
               </label>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={recording ? stopRecording : startRecording}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                    recording
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {recording ? <><Square className="w-4 h-4" /> 停止录音</> : <><Mic className="w-4 h-4" /> 开始录音</>}
-                </button>
-
-                <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 cursor-pointer">
-                  <Upload className="w-4 h-4" /> 上传音频
-                  <input type="file" accept="audio/*" className="hidden" onChange={handleFileChange} />
-                </label>
-              </div>
-
-              {recording && <p className="text-xs text-red-500 mt-1">正在录音... 点击停止</p>}
-              {audioFile && !recording && (
-                <p className="text-xs text-green-600 mt-1">已选择：{audioFile.name}</p>
-              )}
             </div>
+            {recording && <p className="text-xs text-blue-600 -mt-4">正在实时转写... 请说话</p>}
 
             {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
 
@@ -228,26 +255,12 @@ export function DebriefNewPage() {
                 对话录音 <span className="text-red-500">*</span>
               </label>
 
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={recording ? stopRecording : startRecording}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                    recording
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                  }`}
-                >
-                  {recording ? <><Square className="w-4 h-4" /> 停止录音</> : <><Mic className="w-4 h-4" /> 开始录音</>}
-                </button>
+              <label className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 cursor-pointer w-full border border-gray-200">
+                <Upload className="w-4 h-4" /> 上传音频
+                <input type="file" accept="audio/*" className="hidden" onChange={handleFileChange} />
+              </label>
 
-                <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 cursor-pointer">
-                  <Upload className="w-4 h-4" /> 上传音频
-                  <input type="file" accept="audio/*" className="hidden" onChange={handleFileChange} />
-                </label>
-              </div>
-
-              {recording && <p className="text-xs text-red-500 mt-1">正在录音... 点击停止</p>}
-              {audioFile && !recording && (
+              {audioFile && (
                 <p className="text-xs text-green-600 mt-1">已选择：{audioFile.name}</p>
               )}
             </div>
