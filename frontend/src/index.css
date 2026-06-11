@@ -1,0 +1,208 @@
+@import "tailwindcss";
+
+@theme {
+  /* Map blue → indigo (primary brand) */
+  --color-blue-50: #eef2ff;
+  --color-blue-100: #e0e7ff;
+  --color-blue-200: #c7d2fe;
+  --color-blue-300: #a5b4fc;
+  --color-blue-400: #818cf8;
+  --color-blue-500: #6366f1;
+  --color-blue-600: #4f46e5;
+  --color-blue-700: #4338ca;
+  --color-blue-800: #3730a3;
+  --color-blue-900: #312e81;
+  --color-blue-950: #1e1b4b;
+
+  /* Map gray → slate (neutral foundation) */
+  --color-gray-50: #f8fafc;
+  --color-gray-100: #f1f5f9;
+  --color-gray-200: #e2e8f0;
+  --color-gray-300: #cbd5e1;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1e293b;
+  --color-gray-900: #0f172a;
+  --color-gray-950: #020617;
+
+  /* Map green → emerald (success) */
+  --color-green-50: #ecfdf5;
+  --color-green-100: #d1fae5;
+  --color-green-200: #a7f3d0;
+  --color-green-300: #6ee7b7;
+  --color-green-400: #34d399;
+  --color-green-500: #10b981;
+  --color-green-600: #059669;
+  --color-green-700: #047857;
+  --color-green-800: #065f46;
+  --color-green-900: #064e3b;
+  --color-green-950: #022c22;
+
+  /* Map red → rose (errors) */
+  --color-red-50: #fff1f2;
+  --color-red-100: #ffe4e6;
+  --color-red-200: #fecdd3;
+  --color-red-300: #fda4af;
+  --color-red-400: #fb7185;
+  --color-red-500: #f43f5e;
+  --color-red-600: #e11d48;
+  --color-red-700: #be123c;
+  --color-red-800: #9f1239;
+  --color-red-900: #881337;
+  --color-red-950: #4c0519;
+
+  /* Map purple → violet (AI accents) */
+  --color-purple-50: #f5f3ff;
+  --color-purple-100: #ede9fe;
+  --color-purple-200: #ddd6fe;
+  --color-purple-300: #c4b5fd;
+  --color-purple-400: #a78bfa;
+  --color-purple-500: #8b5cf6;
+  --color-purple-600: #7c3aed;
+  --color-purple-700: #6d28d9;
+  --color-purple-800: #5b21b6;
+  --color-purple-900: #4c1d95;
+  --color-purple-950: #2e1065;
+}
+
+:root {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #f9fafb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@page {
+  margin: 1.5cm;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  #root {
+    background: white;
+  }
+
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  .rounded-lg,
+  .rounded-xl,
+  .rounded-2xl {
+    border-radius: 0 !important;
+  }
+
+  .border {
+    border-color: #e2e8f0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .bg-gray-50,
+  .bg-gray-100 {
+    background: transparent !important;
+  }
+
+  .bg-white {
+    background: white !important;
+  }
+
+  .bg-blue-50,
+  .bg-green-50,
+  .bg-amber-50,
+  .bg-red-50,
+  .bg-orange-50,
+  .bg-yellow-50,
+  .bg-purple-50 {
+    background: transparent !important;
+    border-left-width: 2px !important;
+  }
+
+  .bg-blue-600,
+  .bg-green-600,
+  .bg-amber-500 {
+    background: #374151 !important;
+    color: white !important;
+  }
+
+  .text-blue-600,
+  .text-green-600,
+  .text-red-600 {
+    color: #111827 !important;
+  }
+
+  .text-blue-100 {
+    color: #d1d5db !important;
+  }
+
+  audio {
+    display: none !important;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  h2, h3 {
+    page-break-after: avoid;
+  }
+
+  .bg-gradient-to-br {
+    background: #374151 !important;
+  }
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@utility fade-in {
+  animation: fadeIn 0.4s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
