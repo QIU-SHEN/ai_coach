@@ -1,16 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { BookOpen, GraduationCap, Package, X, HelpCircle } from 'lucide-react';
+import { BookOpen, GraduationCap, Package, HelpCircle, Eye, Headphones, Play, FileText } from 'lucide-react';
 import {
   getMaterials,
   getProductLines,
-  downloadMaterial,
-  type ScriptItem,
   type MaterialItem,
   type ProductLine,
-  type SellingPoint,
-  type ProductSpec,
-  type SalesScenario,
 } from '../../api/knowledge';
 import { ProductMaterialsView } from '../../components/ProductMaterialsView';
 
@@ -38,12 +33,6 @@ export function LearningCenterPage() {
   const [productLines, setProductLines] = useState<ProductLine[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal
-  const [modalItem, setModalItem] = useState<{
-    type: 'sp' | 'script' | 'spec' | 'scenario';
-    data: SellingPoint | ScriptItem | ProductSpec | SalesScenario;
-  } | null>(null);
-
   // Pagination
   const [materialsPage, setMaterialsPage] = useState(1);
   const MATERIALS_PAGE_SIZE = 12;
@@ -55,6 +44,10 @@ export function LearningCenterPage() {
   }, []);
 
   const getLineName = (id?: string) => productLines.find((l) => l.product_line_id === id)?.name || '';
+
+  const handlePreview = (m: MaterialItem) => {
+    navigate(`/employee/learning/material/${m.material_id}`);
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -183,11 +176,14 @@ export function LearningCenterPage() {
                         )}
                         <div className="mt-auto space-y-2">
                           <button
-                            onClick={() => downloadMaterial(m.material_id, m.title)}
+                            onClick={() => handlePreview(m)}
                             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
                           >
-                            <BookOpen className="w-4 h-4" />
-                            资料下载
+                            {m.type === 'pdf' ? <FileText className="w-4 h-4" /> :
+                             m.type === 'video' ? <Play className="w-4 h-4" /> :
+                             m.type === 'audio' ? <Headphones className="w-4 h-4" /> :
+                             <Eye className="w-4 h-4" />}
+                            在线查看
                           </button>
                             <button
                               onClick={() => {
@@ -211,110 +207,6 @@ export function LearningCenterPage() {
           {/* 产品资料学习 */}
           {subTab === 'assets' && <ProductMaterialsView />}
         </>
-      )}
-
-      {/* Structured unit detail modal */}
-      {modalItem && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setModalItem(null)}>
-          <div className="relative bg-white rounded-xl shadow-lg max-w-2xl w-full my-8 p-6" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setModalItem(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {modalItem.type === 'sp' && (
-              (() => {
-                const sp = modalItem.data as SellingPoint;
-                return (
-                  <div>
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">卖点</span>
-                    <h2 className="text-lg font-bold text-gray-900 mt-2 mb-1">{sp.title}</h2>
-                    <div className="flex items-center gap-3 text-sm text-gray-500 mb-4">
-                      <span>优先级: <span className={`font-semibold ${sp.priority >= 8 ? 'text-red-600' : sp.priority >= 5 ? 'text-orange-600' : 'text-gray-600'}`}>{sp.priority}</span></span>
-                      <span>分类: {sp.category}</span>
-                    </div>
-                    <div className="border-t pt-4">
-                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{sp.description}</p>
-                      {sp.keywords && sp.keywords.length > 0 && (
-                        <p className="text-xs text-gray-400 mt-4">关键词：{sp.keywords.join('、')}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-
-            {modalItem.type === 'script' && (
-              (() => {
-                const s = modalItem.data as ScriptItem;
-                return (
-                  <div>
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700">话术</span>
-                    <h2 className="text-lg font-bold text-gray-900 mt-2 mb-1">{s.title}</h2>
-                    <div className="flex items-center gap-3 text-sm text-gray-500 mb-4">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${sceneColors[s.scene] || 'bg-gray-100 text-gray-600'}`}>{s.scene}</span>
-                    </div>
-                    <div className="border-t pt-4">
-                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{s.content}</p>
-                      {s.tags && s.tags.length > 0 && (
-                        <p className="text-xs text-gray-400 mt-4">标签：{s.tags.join('、')}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-
-            {modalItem.type === 'spec' && (
-              (() => {
-                const spec = modalItem.data as ProductSpec;
-                return (
-                  <div>
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-50 text-orange-700">方法论</span>
-                    <h2 className="text-lg font-bold text-gray-900 mt-2 mb-1">{spec.spec_name}</h2>
-                    <div className="flex items-center gap-3 text-sm text-gray-500 mb-4">
-                      <span>值: {spec.spec_value}</span>
-                      {spec.unit && <span>单位: {spec.unit}</span>}
-                    </div>
-                    <div className="border-t pt-4">
-                      {spec.common_mistake ? (
-                        <>
-                          <p className="text-xs text-gray-500 mb-1">常见误区</p>
-                          <p className="text-sm text-gray-700 leading-relaxed">{spec.common_mistake}</p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-gray-400">暂无补充说明</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-
-            {modalItem.type === 'scenario' && (
-              (() => {
-                const sc = modalItem.data as SalesScenario;
-                return (
-                  <div>
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">场景</span>
-                    <h2 className="text-lg font-bold text-gray-900 mt-2 mb-1">{sc.title}</h2>
-                    <div className="flex items-center gap-3 text-sm text-gray-500 mb-4">
-                      <span>类型: {sc.scene_type}</span>
-                    </div>
-                    <div className="border-t pt-4">
-                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{sc.content}</p>
-                      {sc.key_takeaway && (
-                        <p className="text-xs text-gray-500 mt-4 font-medium">要点：{sc.key_takeaway}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-          </div>
-        </div>
       )}
     </div>
   );

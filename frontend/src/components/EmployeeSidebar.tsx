@@ -8,8 +8,8 @@ import {
 
 export const employeeMenu = [
   { to: '/employee/home', label: '首页', icon: LayoutDashboard },
-  { to: '/employee/debrief', label: '复盘', icon: ClipboardList },
-  { to: '/employee/learning', label: '学习', icon: BookOpen },
+  { to: '/employee/debrief', label: '销售能力诊断', icon: ClipboardList },
+  { to: '/employee/learning', label: '培训资料学习', icon: BookOpen },
   { to: '/employee/profile', label: '我的', icon: UserCircle },
 ];
 

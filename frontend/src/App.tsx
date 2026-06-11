@@ -11,6 +11,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UploadPage } from './pages/sales/UploadPage';
 import { PracticeSessionPage } from './pages/sales/PracticeSessionPage';
 import { DialogueTrainingPage } from './pages/sales/DialogueTrainingPage';
+import { MaterialPreviewPage } from './pages/employee/MaterialPreviewPage';
 import { TeamListPage } from './pages/manager/TeamListPage';
 import { ReportDetailPage } from './pages/manager/ReportDetailPage';
 
@@ -62,6 +63,7 @@ export default function App() {
             <Route index element={<Navigate to="home" replace />} />
             <Route path="home" element={<EmployeeHomePage />} />
             <Route path="learning" element={<LearningCenterPage />} />
+            <Route path="learning/material/:materialId" element={<MaterialPreviewPage />} />
             <Route path="learning/product/:productLineId" element={<ProductOverviewPage />} />
             <Route path="learning/product/:productLineId/quiz" element={<ProductQuizPage />} />
             <Route path="learning/material/:materialId/quiz" element={<ProductQuizPage />} />
