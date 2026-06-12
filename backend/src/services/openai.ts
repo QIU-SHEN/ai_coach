@@ -27,11 +27,26 @@ export async function callOpenAIResponses(instructions: string, input: string): 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = (await res.json()) as any;
-  const text =
-    data.output?.[0]?.content?.[0]?.text
-    || data.choices?.[0]?.message?.content
-    || data.output?.[0]?.text as string | undefined;
+  let text: string | undefined;
+
+  // Responses API (yunwu.ai / gpt-5.4): text is in output items, may have reasoning items first
+  if (Array.isArray(data.output)) {
+    const messageItem = data.output.find((item: any) => item.type === 'message' && Array.isArray(item.content));
+    text = messageItem?.content?.[0]?.text;
+  }
+
+  // Fallback to chat completions format
   if (!text) {
+    text = data.choices?.[0]?.message?.content;
+  }
+
+  // Legacy fallback
+  if (!text) {
+    text = data.output?.[0]?.text as string | undefined;
+  }
+
+  if (!text) {
+    console.error('[OpenAI unexpected format]', JSON.stringify(data, null, 2));
     throw new Error(`Unexpected OpenAI response format`);
   }
   return text;

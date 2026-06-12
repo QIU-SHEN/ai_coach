@@ -584,7 +584,7 @@ export function ReportDetailPage() {
     );
   }
 
-  const backPath = isEmployee ? '/employee/profile' : '/manager/team';
+  const backPath = isEmployee ? '/employee/diagnosis/assessment' : '/manager/team';
 
   if (error || !detail) {
     return (

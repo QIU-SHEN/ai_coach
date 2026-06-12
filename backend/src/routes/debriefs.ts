@@ -75,7 +75,35 @@ async function resolveProductLineId(name: string | undefined, id: string | undef
 router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest, res) => {
   const userId = req.user!.userId;
   const { title, content, product_line_id, product_line, mode, practice_type, audio_type } = req.body;
-  const debriefMode: DebriefMode = mode === 'call_recording' ? 'call_recording' : 'post_meeting';
+  const debriefMode: DebriefMode =
+    mode === 'call_recording' ? 'call_recording' :
+    mode === 'simulation' ? 'simulation' :
+    'post_meeting';
+
+  if (debriefMode === 'simulation') {
+    if (!title || !title.trim()) {
+      return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 title' } as ApiResponse);
+    }
+    try {
+      const recordId = uuidv4();
+      await pool.execute(
+        `INSERT INTO debrief_records (record_id, user_id, product_line_id, title, content, audio_path, transcript, status, debrief_mode, speaker_diagram)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
+        [recordId, userId, product_line_id || null, title.trim(), content || null, null, null, debriefMode, null]
+      );
+      // simulation 模式也需要创建 practice_meta，让 /dialogue 能读取 product_line
+      await pool.execute(
+        `INSERT INTO debrief_practice_meta (record_id, duration, practice_type, audio_type, product_line)
+         VALUES (?, 0, 'intro', 'monologue', ?)
+         ON DUPLICATE KEY UPDATE product_line = VALUES(product_line)`,
+        [recordId, product_line_id || null]
+      );
+      return res.status(201).json({ code: 0, data: { record_id: recordId } } as ApiResponse);
+    } catch (err) {
+      console.error('Debrief create error (simulation):', err);
+      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: err instanceof Error ? err.message : String(err) } as ApiResponse);
+    }
+  }
 
   if (debriefMode === 'post_meeting') {
     if (!title || !title.trim()) {
@@ -216,8 +244,8 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
 router.get('/', authMiddleware, async (req: AuthRequest, res) => {
   const user = req.user!;
   try {
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
+    let where = 'WHERE dr.debrief_mode != ?';
+    const params: any[] = ['simulation'];
 
     if (user.role === 'employee') {
       where += ' AND dr.user_id = ?';
@@ -748,7 +776,7 @@ router.get('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async 
 // POST /debriefs/:id/dialogue — 开始对话轮次
 router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
   const { id } = req.params;
-  const { round_number } = req.body as { round_number: number };
+  const { round_number, role, status } = req.body as { round_number: number; role?: string; status?: string };
 
   if (!round_number || round_number < 1) {
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少有效的 round_number' } as ApiResponse);
@@ -756,7 +784,7 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
 
   try {
     const recordRows = await query(
-      `SELECT dr.record_id, dr.status, dr.transcript, dr.product_line_id, m.product_line
+      `SELECT dr.record_id, dr.status, dr.transcript, dr.debrief_mode, dr.product_line_id, m.product_line
        FROM debrief_records dr
        LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
        WHERE dr.record_id = ?`,
@@ -766,7 +794,9 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
     if (!record) {
       return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
     }
-    if (record.status !== 'completed') {
+
+    // simulation 模式不需要 ASR，直接进入对话
+    if (record.status !== 'completed' && record.debrief_mode !== 'simulation') {
       return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '练习尚未完成ASR，无法进行对话' } as ApiResponse);
     }
 
@@ -846,6 +876,8 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
       transcript: record.transcript || '',
       productMaterialText,
       currentFocus,
+      role,
+      status,
     });
 
     const existing = await query(
@@ -1022,9 +1054,14 @@ router.post('/:id/finish-dialogue', authMiddleware, requireDebriefOwnerOrManager
   const { id } = req.params;
 
   try {
-    const rows = await query('SELECT record_id FROM debrief_records WHERE record_id = ?', [id]);
+    const rows = await query('SELECT record_id, debrief_mode FROM debrief_records WHERE record_id = ?', [id]);
     if (rows.length === 0) {
       return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
+    }
+
+    // simulation 模式不生成报告，直接返回
+    if (rows[0].debrief_mode === 'simulation') {
+      return res.json({ code: 0 } as ApiResponse);
     }
 
     await pool.execute("UPDATE debrief_records SET status = 'analyzing' WHERE record_id = ?", [id]);

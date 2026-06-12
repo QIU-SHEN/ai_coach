@@ -15,7 +15,7 @@ const QUIZ_GENERATOR_PROMPT = `你是一位产品知识培训专家。请基于�
 4. 答案解析要详细说明为什么正确、其他选项为什么错误
 5. 选项内容不要过长，每选项控制在 30 字以内
 
-输出严格 JSON 数组，不要包含 markdown 代码块标记：
+输出严格 JSON 数组，不要包含 markdown 代码块标记，不要输出任何思考过程，只输出 JSON 内容：
 [
   {
     "question": "题目内容",
@@ -75,7 +75,21 @@ export async function generateQuizzesForProduct(productLineId: string) {
   const prompt = QUIZ_GENERATOR_PROMPT.replace('{{materials}}', materials.join('\n'));
   const response = await callOpenAIChat(prompt, '请严格按照 JSON 数组格式输出题目。');
   const jsonText = response.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
-  const quizzes = JSON.parse(jsonText);
+
+  // AI 可能先输出思考过程再输出 JSON，尝试从文本中提取 JSON 数组
+  let extractText = jsonText;
+  const jsonArrayMatch = jsonText.match(/\[[\s\S]*\]/);
+  if (jsonArrayMatch) {
+    extractText = jsonArrayMatch[0];
+  }
+
+  let quizzes: any[];
+  try {
+    quizzes = JSON.parse(extractText);
+  } catch (err) {
+    console.error('[QuizGenerator] JSON parse failed, raw response:', response.substring(0, 800));
+    throw new Error('AI 返回的内容不是有效 JSON，请重试');
+  }
 
   if (!Array.isArray(quizzes)) {
     throw new Error('AI 返回的题目格式不正确');

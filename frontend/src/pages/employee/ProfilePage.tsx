@@ -111,7 +111,7 @@ export function ProfilePage() {
   // 谈后总结：取最新一条有 personalStyle 的记录
   const latestPostMeeting = completedRecords.find((r) => {
     const analysis = safeParseAnalysis(r);
-    return r.debrief_mode !== 'call_recording' && analysis?.personalStyle;
+    return r.debrief_mode === 'post_meeting' && analysis?.personalStyle;
   });
   const postMeetingAnalysis = latestPostMeeting ? safeParseAnalysis(latestPostMeeting) : undefined;
   let personalStyle = postMeetingAnalysis?.personalStyle;

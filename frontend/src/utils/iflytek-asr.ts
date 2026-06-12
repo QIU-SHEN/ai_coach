@@ -250,7 +250,7 @@ export class IFlytekAsrClient {
       },
     });
 
-    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const actualSampleRate = this.audioCtx.sampleRate;
     // eslint-disable-next-line no-console
     console.log('[iFlytekASR] 浏览器实际采样率: ' + actualSampleRate + ' Hz');

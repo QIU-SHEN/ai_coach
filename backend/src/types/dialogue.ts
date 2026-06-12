@@ -20,6 +20,8 @@ export interface GenerateCustomerQuestionInput {
   transcript?: string;
   productMaterialText?: string;
   currentFocus?: string;
+  role?: string;
+  status?: string;
 }
 
 export interface DialogueResult {

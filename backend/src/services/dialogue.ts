@@ -44,6 +44,29 @@ const SYSTEM_PROMPT_DIALOGUE = `你是一位"懂行的挑剔客户"，正在考�
 export async function generateCustomerQuestion(
   input: GenerateCustomerQuestionInput
 ): Promise<DialogueResult> {
-  const text = await callOpenAIResponses(SYSTEM_PROMPT_DIALOGUE, JSON.stringify(input));
+  let rolePrompt = '';
+  if (input.role) {
+    const roleNames: Record<string, string> = {
+      decision_maker: '决策者（高层，关注 ROI 和战略价值）',
+      user: '使用者（一线员工，关注易用性和效率）',
+      technical: '技术顾问（IT/技术负责人，关注技术细节）',
+      procurement: '采购（采购部门，关注价格和合同条款）',
+      admin: '行政（关注流程合规）',
+    };
+    rolePrompt = `\n\n## 你的角色设定\n你是${roleNames[input.role] || input.role}，你的提问风格、关注点和语气都要符合这个角色。`;
+  }
+
+  let statusPrompt = '';
+  if (input.status) {
+    const statusNames: Record<string, string> = {
+      observing: '观望（犹豫不决，需要更多说服）',
+      comparing: '对比（正在对比多家供应商）',
+      urgent: '急迫（有明确需求，希望快速推进）',
+    };
+    statusPrompt = `\n\n## 你的采购心态\n当前状态是「${statusNames[input.status] || input.status}」，这会影响你提问的态度和紧迫程度。`;
+  }
+
+  const finalPrompt = SYSTEM_PROMPT_DIALOGUE + rolePrompt + statusPrompt;
+  const text = await callOpenAIResponses(finalPrompt, JSON.stringify(input));
   return extractJson<DialogueResult>(text);
 }

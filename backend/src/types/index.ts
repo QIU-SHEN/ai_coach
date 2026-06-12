@@ -55,4 +55,4 @@ export interface PracticeRecord {
   updated_at: Date;
 }
 
-export type DebriefMode = 'post_meeting' | 'call_recording';
+export type DebriefMode = 'post_meeting' | 'call_recording' | 'simulation';

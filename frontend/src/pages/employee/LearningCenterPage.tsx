@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { BookOpen, GraduationCap, Package, HelpCircle, Eye, Headphones, Play, FileText } from 'lucide-react';
+import { GraduationCap, Package, HelpCircle, Eye, Headphones, Play, FileText } from 'lucide-react';
 import {
   getMaterials,
   getProductLines,
@@ -61,10 +61,10 @@ export function LearningCenterPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const sceneColors: Record<string, string> = {
-    '开场': 'bg-blue-50 text-blue-700', '异议处理': 'bg-red-50 text-red-700',
-    '促单': 'bg-green-50 text-green-700', '转介绍': 'bg-purple-50 text-purple-700',
-  };
+  // const sceneColors: Record<string, string> = {
+  //   '开场': 'bg-blue-50 text-blue-700', '异议处理': 'bg-red-50 text-red-700',
+  //   '促单': 'bg-green-50 text-green-700', '转介绍': 'bg-purple-50 text-purple-700',
+  // };
 
   const Pagination = ({ current, total, pageSize, onChange }: { current: number; total: number; pageSize: number; onChange: (p: number) => void }) => {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));

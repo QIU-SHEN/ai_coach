@@ -2,7 +2,7 @@ import { authHeaders } from './auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
 
-export type DebriefMode = 'post_meeting' | 'call_recording';
+export type DebriefMode = 'post_meeting' | 'call_recording' | 'simulation';
 
 export interface DebriefRecord {
   record_id: string;
@@ -330,12 +330,14 @@ export interface DialogueResult {
 
 export async function startDialogueRound(
   recordId: string,
-  roundNumber: number
+  roundNumber: number,
+  role?: string,
+  status?: string
 ): Promise<DialogueResult> {
   const res = await fetch(`${API_BASE}/api/v1/debriefs/${recordId}/dialogue`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ round_number: roundNumber }),
+    body: JSON.stringify({ round_number: roundNumber, role, status }),
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);

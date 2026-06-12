@@ -37,12 +37,22 @@ export async function callOpenAIChat(
     }),
   });
 
+  const rawText = await res.text();
+
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenAI Chat API error ${res.status}: ${errText}`);
+    // Check if response is HTML
+    if (rawText.trim().startsWith('<')) {
+      const snippet = rawText.substring(0, 200).replace(/\s+/g, ' ');
+      throw new Error(`OpenAI Chat API returned HTML (status ${res.status}): ${snippet}`);
+    }
+    throw new Error(`OpenAI Chat API error ${res.status}: ${rawText.substring(0, 500)}`);
   }
 
-  const rawText = await res.text();
+  // Check if response is HTML (sometimes proxy returns HTML even with 200)
+  if (rawText.trim().startsWith('<')) {
+    const snippet = rawText.substring(0, 200).replace(/\s+/g, ' ');
+    throw new Error(`OpenAI Chat API returned HTML: ${snippet}`);
+  }
 
   // Some proxies return SSE even with stream=false; parse the last data chunk
   let data: any;

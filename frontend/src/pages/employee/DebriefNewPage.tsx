@@ -15,12 +15,13 @@ export function DebriefNewPage() {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  // const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // const chunksRef = useRef<Blob[]>([]);
   // 讯飞实时转写客户端引用
   const asrClientRef = useRef<IFlytekAsrClient | null>(null);
 
   // --- 原有的本地录音逻辑（保留用于 call_recording 模式） ---
+  /*
   const startLocalRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -50,6 +51,7 @@ export function DebriefNewPage() {
     mediaRecorderRef.current?.stop();
     setRecording(false);
   };
+  */
 
   // --- 讯飞实时转写逻辑（post_meeting 模式使用） ---
   const asrFinalRef = useRef('');

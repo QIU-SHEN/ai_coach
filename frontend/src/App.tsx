@@ -12,6 +12,11 @@ import { UploadPage } from './pages/sales/UploadPage';
 import { PracticeSessionPage } from './pages/sales/PracticeSessionPage';
 import { DialogueTrainingPage } from './pages/sales/DialogueTrainingPage';
 import { MaterialPreviewPage } from './pages/employee/MaterialPreviewPage';
+import { DiagnosisLayout } from './pages/diagnosis/DiagnosisLayout';
+import { AssessmentPage } from './pages/diagnosis/AssessmentPage';
+import { SimulationPage } from './pages/diagnosis/SimulationPage';
+import { SimulationChatPage } from './pages/diagnosis/SimulationChatPage';
+import { DebriefCenterPage } from './pages/diagnosis/DebriefCenterPage';
 import { TeamListPage } from './pages/manager/TeamListPage';
 import { ReportDetailPage } from './pages/manager/ReportDetailPage';
 
@@ -79,6 +84,14 @@ export default function App() {
             <Route path="debrief/:id/report" element={<ReportDetailPage />} />
             <Route path="debrief/:recordId/session" element={<PracticeSessionPage />} />
             <Route path="debrief/:recordId/dialogue-training" element={<DialogueTrainingPage />} />
+            {/* 新销售能力诊断路由 */}
+            <Route path="diagnosis" element={<DiagnosisLayout />}>
+              <Route index element={<Navigate to="assessment" replace />} />
+              <Route path="assessment" element={<AssessmentPage />} />
+              <Route path="simulation" element={<SimulationPage />} />
+              <Route path="simulation/:recordId/chat" element={<SimulationChatPage />} />
+              <Route path="debrief" element={<DebriefCenterPage />} />
+            </Route>
           </Route>
         </Route>
 

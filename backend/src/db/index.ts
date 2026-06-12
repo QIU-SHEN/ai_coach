@@ -513,6 +513,7 @@ export async function initDb() {
 
   // debrief_records migration
   await pool.execute(`ALTER TABLE debrief_records ADD COLUMN debrief_mode VARCHAR(30) NOT NULL DEFAULT 'post_meeting'`).catch(() => { /* already exists */ });
+  await pool.execute(`ALTER TABLE debrief_records MODIFY COLUMN debrief_mode VARCHAR(50) NOT NULL DEFAULT 'post_meeting'`).catch(() => { /* already correct type */ });
   await pool.execute(`ALTER TABLE debrief_records ADD COLUMN speaker_diagram JSON DEFAULT NULL`).catch(() => { /* already exists */ });
 
   // debrief_practice_meta extension table (for merged call_recording flow)

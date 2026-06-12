@@ -14,8 +14,6 @@ export function MaterialPreviewPage() {
   const [error, setError] = useState('');
   const [blobUrl, setBlobUrl] = useState<string>('');
 
-  const [blobLoading, setBlobLoading] = useState(false);
-
   // 1. 获取资料元数据
   useEffect(() => {
     if (!materialId) return;
@@ -37,9 +35,6 @@ export function MaterialPreviewPage() {
     if (!material) return;
 
     const fetchBlob = async () => {
-      if (material.type === 'pdf' || material.type === 'video' || material.type === 'audio') {
-        setBlobLoading(true);
-      }
       try {
         const res = await fetch(`${API_BASE}/api/v1/materials/${material.material_id}/download`, {
           headers: { ...authHeaders() },
@@ -50,12 +45,12 @@ export function MaterialPreviewPage() {
         setBlobUrl(url);
       } catch {
         setError('预览加载失败');
-      } finally {
-        setBlobLoading(false);
       }
     };
 
-    fetchBlob();
+    if (material.type === 'pdf' || material.type === 'video' || material.type === 'audio') {
+      fetchBlob();
+    }
 
     return () => {
       if (blobUrl) {
@@ -92,7 +87,7 @@ export function MaterialPreviewPage() {
       {/* Header */}
       <div className="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/employee/learning')} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div>
@@ -125,58 +120,30 @@ export function MaterialPreviewPage() {
         <div className="max-w-5xl mx-auto bg-white rounded-xl border overflow-hidden">
           {material.type === 'pdf' && (
             <div className="h-[calc(100vh-180px)]">
-              {blobLoading && (
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500">正在加载文档...</p>
-                  </div>
-                </div>
-              )}
-              {blobUrl && (
-                <iframe
-                  src={blobUrl}
-                  className="w-full h-full border-0"
-                  title={material.title}
-                />
-              )}
+              <iframe
+                src={blobUrl || downloadUrl}
+                className="w-full h-full border-0"
+                title={material.title}
+              />
             </div>
           )}
 
           {material.type === 'video' && (
             <div className="flex items-center justify-center bg-black p-4">
-              {blobLoading && (
-                <div className="text-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-                  <p className="text-sm text-gray-400">正在加载视频...</p>
-                </div>
-              )}
-              {blobUrl && (
-                <video
-                  controls
-                  src={blobUrl}
-                  className="w-full max-h-[calc(100vh-180px)] rounded-lg"
-                  style={{ maxWidth: '100%' }}
-                />
-              )}
+              <video
+                controls
+                src={blobUrl || downloadUrl}
+                className="w-full max-h-[calc(100vh-180px)] rounded-lg"
+                style={{ maxWidth: '100%' }}
+              />
             </div>
           )}
 
           {material.type === 'audio' && (
             <div className="flex flex-col items-center justify-center p-12 bg-gradient-to-b from-blue-50 to-white">
-              {blobLoading && (
-                <div className="text-center mb-6">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">正在加载音频...</p>
-                </div>
-              )}
-              {blobUrl && (
-                <>
-                  <Headphones className="w-24 h-24 text-blue-400 mb-8" />
-                  <p className="text-lg font-medium text-gray-700 mb-4">{material.title}</p>
-                  <audio controls src={blobUrl} className="w-full max-w-md" />
-                </>
-              )}
+              <Headphones className="w-24 h-24 text-blue-400 mb-8" />
+              <p className="text-lg font-medium text-gray-700 mb-4">{material.title}</p>
+              <audio controls src={blobUrl || downloadUrl} className="w-full max-w-md" />
             </div>
           )}
 

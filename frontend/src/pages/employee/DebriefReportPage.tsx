@@ -115,7 +115,7 @@ export function DebriefReportPage() {
           <AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" />
           <p className="text-red-900 font-medium">{error || '记录不存在'}</p>
           <button
-            onClick={() => navigate('/employee/debrief')}
+            onClick={() => navigate('/employee/diagnosis/debrief')}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
           >
             返回列表
@@ -133,7 +133,7 @@ export function DebriefReportPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-white border-b px-6 py-3 flex items-center gap-3 sticky top-0 z-10">
-        <button onClick={() => navigate('/employee/debrief')} className="p-2 hover:bg-gray-100 rounded-lg">
+        <button onClick={() => navigate('/employee/diagnosis/debrief')} className="p-2 hover:bg-gray-100 rounded-lg">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
         <div className="flex-1 min-w-0">

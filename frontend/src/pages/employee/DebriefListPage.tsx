@@ -140,10 +140,10 @@ export function DebriefListPage() {
                 谈后总结
               </h2>
               <div className="space-y-3">
-                {records.filter((r) => r.debrief_mode !== 'call_recording').map((r) => (
+                {records.filter((r) => r.debrief_mode === 'post_meeting').map((r) => (
                   <DebriefCard key={r.record_id} record={r} productLineName={getProductLineName(r.product_line_id)} onClick={() => navigate(`/employee/debrief/${r.record_id}`)} />
                 ))}
-                {records.filter((r) => r.debrief_mode !== 'call_recording').length === 0 && (
+                {records.filter((r) => r.debrief_mode === 'post_meeting').length === 0 && (
                   <p className="text-sm text-gray-400 py-2">暂无谈后总结记录</p>
                 )}
               </div>
