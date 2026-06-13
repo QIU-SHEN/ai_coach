@@ -4,7 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
 import { pool, parseJsonRows } from '../db';
-import { saveUpload } from '../services/storage';
+import { saveUpload, extractOssKey } from '../services/storage';
+import { downloadFromOss } from '../services/oss';
 import { getAudioDuration, detectSilenceRatio } from '../services/audio';
 import { transcribeWithWhisper, transcribeWithYunwu, transcribeWithAlignment, isLocalWhisper } from '../services/asr';
 import { generateCustomerQuestion } from '../services/dialogue';
@@ -200,18 +201,19 @@ router.post('/upload', authMiddleware, upload.single('audio'), async (req: AuthR
 
   try {
     const recordId = uuidv4();
-    const savedPath = await saveUpload(file.path, recordId, ext.replace('.', ''));
-    const localFilePath = path.resolve(process.cwd(), 'uploads', `${recordId}${ext}`);
+    const savedPath = await saveUpload(file.path, recordId, ext.replace('.', ''), 'practices');
+
+    // Analyze the local temp file (still available after saveUpload)
     let rawDuration = 0;
     try {
-      rawDuration = await getAudioDuration(localFilePath);
+      rawDuration = await getAudioDuration(file.path);
     } catch (audioErr) {
       console.warn('Failed to get audio duration:', audioErr);
     }
     const duration = Math.max(0, Math.round(Number(rawDuration) || 0));
 
     if (duration > 0 && duration < MIN_DURATION_SECONDS) {
-      try { fs.unlinkSync(localFilePath); } catch { /* ignore */ }
+      try { fs.unlinkSync(file.path); } catch { /* ignore */ }
       return res.status(400).json({
         code: ERR_AUDIO_TOO_SHORT.code,
         message: `音频时长过短（${duration}秒），请录制至少 ${MIN_DURATION_SECONDS} 秒`,
@@ -220,15 +222,18 @@ router.post('/upload', authMiddleware, upload.single('audio'), async (req: AuthR
 
     // Quality check
     if (duration > 0) {
-      const silenceRatio = await detectSilenceRatio(localFilePath);
+      const silenceRatio = await detectSilenceRatio(file.path);
       if (silenceRatio > MAX_SILENCE_RATIO) {
-        try { fs.unlinkSync(localFilePath); } catch { /* ignore */ }
+        try { fs.unlinkSync(file.path); } catch { /* ignore */ }
         return res.status(400).json({
           code: ERR_POOR_AUDIO_QUALITY.code,
           message: `音频静音比例过高（${(silenceRatio * 100).toFixed(1)}%），请检查麦克风并重新录制`,
         } as ApiResponse);
       }
     }
+
+    // Clean up temp file after analysis
+    try { fs.unlinkSync(file.path); } catch { /* ignore */ }
 
     await pool.execute(
       'INSERT INTO practice_records (record_id, user_id, audio_path, duration, product_line, practice_type, audio_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -309,8 +314,10 @@ router.post('/:record_id/retry-asr', authMiddleware, requireRecordOwnerOrManager
     );
 
     try {
-      const filename = path.basename(record.audio_path);
-      const localFilePath = path.resolve(process.cwd(), 'uploads', filename);
+      // Download from OSS to local temp
+      const localFilePath = path.resolve(process.cwd(), 'uploads', `${record_id}.tmp.${path.extname(record.audio_path).slice(1) || 'mp3'}`);
+      const ossKey = extractOssKey(record.audio_path);
+      await downloadFromOss(ossKey, localFilePath);
 
       const engineRows = await query('SELECT setting_value FROM settings WHERE setting_key = ?', ['asr_engine']);
       const engine = engineRows[0]?.setting_value || 'whisper';
@@ -367,13 +374,15 @@ router.post('/:record_id/start-asr', authMiddleware, requireRecordOwnerOrManager
       return res.json({ code: 0, data: { record_id, status: record.status } } as ApiResponse);
     }
 
-    const filename = path.basename(record.audio_path);
-    const localFilePath = path.resolve(process.cwd(), 'uploads', filename);
-
     await pool.execute(
       "UPDATE practice_records SET status = 'processing' WHERE record_id = ?",
       [record_id]
     );
+
+    // Download from OSS to local temp
+    const localFilePath = path.resolve(process.cwd(), 'uploads', `${record_id}.tmp.${path.extname(record.audio_path).slice(1) || 'mp3'}`);
+    const ossKey = extractOssKey(record.audio_path);
+    await downloadFromOss(ossKey, localFilePath);
 
     // Read ASR engine config
     const engineRows = await query('SELECT setting_value FROM settings WHERE setting_key = ?', ['asr_engine']);
@@ -809,18 +818,18 @@ router.post('/:record_id/voice-reply', authMiddleware, upload.single('audio'), r
     }
 
     const ext = path.extname(file.originalname).toLowerCase().replace('.', '') || 'mp3';
-    const audioBuffer = fs.readFileSync(file.path);
+    const audioSaveName = `voice_${record_id}_${round_number}`;
 
-    // Save audio file
-    const audioSaveName = `voice_${record_id}_${round_number}.${ext}`;
-    const voiceRepliesDir = path.resolve(process.cwd(), 'uploads', 'voice_replies');
-    if (!fs.existsSync(voiceRepliesDir)) {
-      fs.mkdirSync(voiceRepliesDir, { recursive: true });
-    }
-    fs.writeFileSync(path.join(voiceRepliesDir, audioSaveName), audioBuffer);
+    // Upload to OSS
+    const savedUrl = await saveUpload(file.path, audioSaveName, ext, 'voice-replies');
 
     // Clean up temp file
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+
+    // Download from OSS to local for transcription
+    const localFilePath = path.resolve(process.cwd(), 'uploads', `${audioSaveName}.tmp.${ext}`);
+    const ossKey = extractOssKey(savedUrl);
+    await downloadFromOss(ossKey, localFilePath);
 
     // 1. Transcribe based on ASR engine setting
     const engineRows = await query('SELECT setting_value FROM settings WHERE setting_key = ?', ['asr_engine']);
@@ -828,17 +837,20 @@ router.post('/:record_id/voice-reply', authMiddleware, upload.single('audio'), r
 
     let transcript: string;
     if (engine === 'whisper' && isLocalWhisper()) {
-      const result = await transcribeWithWhisper(path.join(voiceRepliesDir, audioSaveName));
+      const result = await transcribeWithWhisper(localFilePath);
       transcript = result.transcript;
     } else {
-      const result = await transcribeWithYunwu(path.join(voiceRepliesDir, audioSaveName));
+      const result = await transcribeWithYunwu(localFilePath);
       transcript = result.transcript;
     }
+
+    // Clean up local temp
+    try { fs.unlinkSync(localFilePath); } catch { /* ignore */ }
 
     // 2. Save transcript to dialogue_rounds
     await pool.execute(
       'UPDATE dialogue_rounds SET sales_reply = ?, audio_reply_path = ? WHERE record_id = ? AND round_number = ?',
-      [transcript, `uploads/voice_replies/${audioSaveName}`, record_id, round_number]
+      [transcript, savedUrl, record_id, round_number]
     );
 
     res.json({

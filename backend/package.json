@@ -13,6 +13,7 @@
     "@alicloud/pop-core": "^1.7.13",
     "@types/nodemailer": "^8.0.0",
     "@types/pdfmake": "^0.3.3",
+    "ali-oss": "^6.23.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

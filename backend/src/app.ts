@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
 import { initDb } from './db';
 import practicesRouter from './routes/practices';
 import authRouter from './routes/auth';
@@ -23,10 +22,6 @@ app.use(
   })
 );
 app.use(express.json());
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), {
-  acceptRanges: true,
-  maxAge: '1d',
-}));
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/practices', practicesRouter);

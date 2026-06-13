@@ -177,18 +177,18 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
 
   try {
     const recordId = uuidv4();
-    const savedPath = await saveUpload(file.path, recordId, ext.replace('.', ''));
-    const localFilePath = path.resolve(process.cwd(), 'uploads', `${recordId}${ext}`);
+
+    // 1. 先分析本地文件
     let rawDuration = 0;
     try {
-      rawDuration = await getAudioDuration(localFilePath);
+      rawDuration = await getAudioDuration(file.path);
     } catch (audioErr) {
       console.warn('Failed to get audio duration:', audioErr);
     }
     const duration = Math.max(0, Math.round(Number(rawDuration) || 0));
 
     if (duration > 0 && duration < MIN_DURATION_SECONDS) {
-      try { fs.unlinkSync(localFilePath); } catch { /* ignore */ }
+      try { fs.unlinkSync(file.path); } catch { /* ignore */ }
       return res.status(400).json({
         code: ERR_AUDIO_TOO_SHORT.code,
         message: `音频时长过短（${duration}秒），请录制至少 ${MIN_DURATION_SECONDS} 秒`,
@@ -196,15 +196,21 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
     }
 
     if (duration > 0) {
-      const silenceRatio = await detectSilenceRatio(localFilePath);
+      const silenceRatio = await detectSilenceRatio(file.path);
       if (silenceRatio > MAX_SILENCE_RATIO) {
-        try { fs.unlinkSync(localFilePath); } catch { /* ignore */ }
+        try { fs.unlinkSync(file.path); } catch { /* ignore */ }
         return res.status(400).json({
           code: ERR_POOR_AUDIO_QUALITY.code,
           message: `音频静音比例过高（${(silenceRatio * 100).toFixed(1)}%），请检查麦克风并重新录制`,
         } as ApiResponse);
       }
     }
+
+    // 2. 分析完成后上传到 OSS
+    const savedPath = await saveUpload(file.path, recordId, ext.replace('.', ''), 'debriefs');
+
+    // 3. 清理本地临时文件
+    try { fs.unlinkSync(file.path); } catch { /* ignore */ }
 
     const resolvedProductLineId = await resolveProductLineId(pLineName, product_line_id);
 
@@ -549,8 +555,17 @@ router.post('/:id/start-asr', authMiddleware, requireDebriefOwnerOrManager, asyn
       return res.json({ code: 0, data: { record_id: id, status: record.status } } as ApiResponse);
     }
 
-    const filename = path.basename(record.audio_path);
-    const localFilePath = path.resolve(process.cwd(), 'uploads', filename);
+    // 从 OSS 下载音频到本地临时文件
+    const { getFileUrl, extractOssKey } = await import('../services/storage');
+    const audioUrl = getFileUrl(record.audio_path);
+    if (!audioUrl) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: '音频路径不存在' } as ApiResponse);
+    }
+    const ossKey = extractOssKey(record.audio_path);
+    const localFilePath = path.resolve(process.cwd(), 'uploads/tmp', path.basename(ossKey));
+    const { downloadFromOss } = await import('../services/oss');
+    await downloadFromOss(ossKey, localFilePath);
+
     await pool.execute("UPDATE debrief_records SET status = 'processing' WHERE record_id = ?", [id]);
 
     const engineRows = await query('SELECT setting_value FROM settings WHERE setting_key = ?', ['asr_engine']);
@@ -629,8 +644,16 @@ router.post('/:id/retry-asr', authMiddleware, requireDebriefOwnerOrManager, asyn
       [id]
     );
 
-    const filename = path.basename(record.audio_path);
-    const localFilePath = path.resolve(process.cwd(), 'uploads', filename);
+    // 从 OSS 下载音频到本地临时文件
+    const { getFileUrl: _getFileUrl2, extractOssKey: _extractOssKey2 } = await import('../services/storage');
+    const _audioUrl2 = _getFileUrl2(record.audio_path);
+    if (!_audioUrl2) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: '音频路径不存在' } as ApiResponse);
+    }
+    const _ossKey2 = _extractOssKey2(record.audio_path);
+    const localFilePath = path.resolve(process.cwd(), 'uploads/tmp', path.basename(_ossKey2));
+    const { downloadFromOss: _downloadFromOss2 } = await import('../services/oss');
+    await _downloadFromOss2(_ossKey2, localFilePath);
 
     const engineRows = await query('SELECT setting_value FROM settings WHERE setting_key = ?', ['asr_engine']);
     const engine = engineRows[0]?.setting_value || 'whisper';
@@ -800,27 +823,16 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
       return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '练习尚未完成ASR，无法进行对话' } as ApiResponse);
     }
 
-    // 获取产品资料介绍文字（training_materials + product_lines.description）
+    // 获取产品资料介绍文字（只取 product_lines.description）
     let productMaterialText = '';
     if (record.product_line_id) {
-      const [materialRows, productLineRows] = await Promise.all([
-        query(
-          `SELECT description FROM training_materials WHERE product_line_id = ? AND status = 'active' AND description IS NOT NULL AND description != ''`,
-          [record.product_line_id]
-        ),
-        query(
-          `SELECT description FROM product_lines WHERE product_line_id = ? AND description IS NOT NULL AND description != ''`,
-          [record.product_line_id]
-        ),
-      ]);
-      const descriptions: string[] = [];
-      for (const m of materialRows) {
-        if (m.description) descriptions.push(m.description);
+      const [productLineRows] = await pool.execute(
+        `SELECT description FROM product_lines WHERE product_line_id = ? AND description IS NOT NULL AND description != ''`,
+        [record.product_line_id]
+      );
+      if ((productLineRows as any[])[0]?.description) {
+        productMaterialText = (productLineRows as any[])[0].description;
       }
-      if (productLineRows[0]?.description) {
-        descriptions.push(productLineRows[0].description);
-      }
-      productMaterialText = descriptions.join('\n\n');
     }
 
     const existingRounds = await query(
@@ -833,38 +845,20 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
     }));
 
     let difficulty: 'easy' | 'medium' | 'hard' = 'medium';
-    const previousRound = round_number - 1;
-    if (previousRound >= 1) {
-      const prevReplyRows = await query(
-        'SELECT sales_reply FROM dialogue_rounds WHERE record_id = ? AND round_number = ?',
-        [id, previousRound]
-      );
-      const prevReply = prevReplyRows[0]?.sales_reply;
-      if (prevReply) {
-        try {
-          const diffResult = await callOpenAIChat(
-            `你是一位销售培训难度评估专家。请根据销售人员的回答质量，判断下一轮应该用什么难度。\n\n评分标准：\n- 回答完整、有说服力、用了具体数据或案例 → 回复 hard\n- 回答基本到位但不够深入或缺少细节 → 回复 medium\n- 回答偏离主题、没有回应客户问题、内容空洞 → 回复 easy\n\n只回复一个词：easy、medium 或 hard，不要任何其他内容。`,
-            `客户问题（第${previousRound}轮）：${existingRounds[existingRounds.length - 1]?.customer_question || ''}\n\n销售人员的回答：${prevReply}`
-          );
-          const d = diffResult.trim().toLowerCase();
-          if (d === 'easy' || d === 'medium' || d === 'hard') {
-            difficulty = d;
-          }
-        } catch (err) {
-          console.warn('Difficulty assessment failed:', err);
-        }
-      }
-    }
 
-    const DIMENSION_STRATEGY = [
-      { round: 1, focus: '核心定位与目标人群' },
-      { round: 2, focus: '规格参数与核心功能' },
-      { round: 3, focus: '使用场景与适用人群' },
-      { round: 4, focus: '具体数据与技术细节' },
-      { round: 5, focus: '竞品对比与差异化优势' },
-      { round: 6, focus: '综合价值与购买理由' },
-    ];
-    const currentFocus = DIMENSION_STRATEGY.find(d => d.round === round_number)?.focus || '综合知识';
+    // 如果是第1轮且没有历史对话，由销售先开场
+    if (round_number === 1 && existingRounds.length === 0) {
+      return res.json({
+        code: 0,
+        data: {
+          round_number: 1,
+          customer_question: '',
+          difficulty: 'medium',
+          expected_focus: '等待销售开场白',
+          is_first_round: true,
+        },
+      } as ApiResponse);
+    }
 
     const { generateCustomerQuestion } = await import('../services/dialogue');
     const result = await generateCustomerQuestion({
@@ -875,7 +869,6 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
       productLine: record.product_line,
       transcript: record.transcript || '',
       productMaterialText,
-      currentFocus,
       role,
       status,
     });
@@ -914,27 +907,6 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
     } as ApiResponse);
   } catch (err) {
     console.error('Dialogue error:', err);
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
-  }
-});
-
-// POST /debriefs/:id/save-reply — 保存回复（不评分）
-router.post('/:id/save-reply', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  const { round_number, reply } = req.body as { round_number: number; reply: string };
-
-  if (!round_number || !reply) {
-    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 round_number 或 reply' } as ApiResponse);
-  }
-
-  try {
-    await pool.execute(
-      'UPDATE dialogue_rounds SET sales_reply = ? WHERE record_id = ? AND round_number = ?',
-      [reply, id, round_number]
-    );
-    res.json({ code: 0 } as ApiResponse);
-  } catch (err) {
-    console.error('Save reply error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1011,14 +983,17 @@ router.post('/:id/voice-reply', authMiddleware, upload.single('audio'), requireD
     }
 
     const ext = path.extname(file.originalname).toLowerCase().replace('.', '') || 'mp3';
-    const audioBuffer = fs.readFileSync(file.path);
-
     const audioSaveName = `voice_${id}_${round_number}.${ext}`;
-    const voiceRepliesDir = path.resolve(process.cwd(), 'uploads', 'voice_replies');
-    if (!fs.existsSync(voiceRepliesDir)) {
-      fs.mkdirSync(voiceRepliesDir, { recursive: true });
-    }
-    fs.writeFileSync(path.join(voiceRepliesDir, audioSaveName), audioBuffer);
+
+    // 上传到 OSS
+    const { uploadToOss } = await import('../services/oss');
+    const ossKey = `voice-replies/${audioSaveName}`;
+    const ossUrl = await uploadToOss(file.path, ossKey);
+
+    // 下载到本地用于 ASR
+    const { downloadFromOss } = await import('../services/oss');
+    const localFilePath = path.resolve(process.cwd(), 'uploads/tmp', audioSaveName);
+    await downloadFromOss(ossKey, localFilePath);
 
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
 
@@ -1027,16 +1002,16 @@ router.post('/:id/voice-reply', authMiddleware, upload.single('audio'), requireD
 
     let transcript: string;
     if (engine === 'whisper' && isLocalWhisper()) {
-      const result = await transcribeWithWhisper(path.join(voiceRepliesDir, audioSaveName));
+      const result = await transcribeWithWhisper(localFilePath);
       transcript = result.transcript;
     } else {
-      const result = await transcribeWithYunwu(path.join(voiceRepliesDir, audioSaveName));
+      const result = await transcribeWithYunwu(localFilePath);
       transcript = result.transcript;
     }
 
     await pool.execute(
       'UPDATE dialogue_rounds SET sales_reply = ?, audio_reply_path = ? WHERE record_id = ? AND round_number = ?',
-      [transcript, `uploads/voice_replies/${audioSaveName}`, id, round_number]
+      [transcript, ossUrl, id, round_number]
     );
 
     res.json({
@@ -1873,6 +1848,164 @@ router.post('/:id/dialogue-training', authMiddleware, requireDebriefOwnerOrManag
     res.json({ code: 0, data: { customer_question: responseText.trim(), persuasion_score: persuasionScore } } as ApiResponse);
   } catch (err) {
     console.error('Dialogue training error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
+// POST /debriefs/:id/simulation/send — 模拟对话：用户发送消息，AI 回应
+router.post('/:id/simulation/send', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+  const { sales_message, role, status, difficulty } = req.body as { sales_message?: string; role?: string; status?: string; difficulty?: string };
+
+  if (!sales_message || !sales_message.trim()) {
+    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 sales_message' } as ApiResponse);
+  }
+
+  try {
+    const recordRows = await query(
+      `SELECT dr.record_id, dr.debrief_mode, dr.product_line_id
+       FROM debrief_records dr
+       WHERE dr.record_id = ?`,
+      [id]
+    );
+    const record = recordRows[0];
+    if (!record) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
+    }
+
+    // 获取当前最大轮次
+    const maxRoundRows = await query(
+      'SELECT COALESCE(MAX(round_number), 0) as max_round FROM dialogue_rounds WHERE record_id = ?',
+      [id]
+    );
+    const currentRoundNumber = (maxRoundRows[0]?.max_round ?? 0) + 1;
+
+    // 保存销售消息到新轮次
+    await pool.execute(
+      'INSERT INTO dialogue_rounds (record_id, round_number, customer_question, sales_reply, difficulty) VALUES (?, ?, ?, ?, ?)',
+      [id, currentRoundNumber, '', sales_message.trim(), difficulty || 'medium']
+    );
+
+    // 获取对话历史（用于AI上下文）
+    const historyRows = await query(
+      'SELECT customer_question, sales_reply FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC',
+      [id]
+    );
+    const conversationHistory = historyRows.map((r: any) => ({
+      customerQuestion: r.customer_question || '',
+      salesReply: r.sales_reply || '',
+    }));
+
+    // 获取产品资料
+    let productMaterialText = '';
+    if (record.product_line_id) {
+      const [productLineRows] = await pool.execute(
+        `SELECT description FROM product_lines WHERE product_line_id = ? AND description IS NOT NULL AND description != ''`,
+        [record.product_line_id]
+      );
+      if ((productLineRows as any[])[0]?.description) {
+        productMaterialText = (productLineRows as any[])[0].description;
+      }
+    }
+
+    // 调用 AI 生成客户回应
+    const { generateCustomerQuestion } = await import('../services/dialogue');
+    const result = await generateCustomerQuestion({
+      role,
+      status,
+      productMaterialText,
+      conversationHistory,
+      difficulty: (difficulty as 'easy' | 'medium' | 'hard') || 'medium',
+    });
+
+    // 更新当前轮次的 customer_question
+    await pool.execute(
+      'UPDATE dialogue_rounds SET customer_question = ? WHERE record_id = ? AND round_number = ?',
+      [result.customerQuestion, id, currentRoundNumber]
+    );
+
+    res.json({
+      code: 0,
+      data: {
+        round_number: currentRoundNumber,
+        customer_question: result.customerQuestion,
+        is_convinced: result.isConvinced,
+      },
+    } as ApiResponse);
+  } catch (err) {
+    console.error('Simulation send error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
+// POST /debriefs/:id/simulation/finish — 结束模拟对话并评估
+router.post('/:id/simulation/finish', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+
+  try {
+    const recordRows = await query('SELECT record_id FROM debrief_records WHERE record_id = ?', [id]);
+    if (recordRows.length === 0) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
+    }
+
+    // 获取完整对话历史
+    const historyRows = await query(
+      'SELECT customer_question, sales_reply FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC',
+      [id]
+    );
+    const conversationHistory = historyRows.map((r: any) => ({
+      customerQuestion: r.customer_question || '',
+      salesReply: r.sales_reply || '',
+    }));
+
+    // 调用 AI 评估
+    const { evaluateSimulation } = await import('../services/dialogue');
+    const evalResult = await evaluateSimulation({ conversationHistory });
+
+    // 保存评估结果到 debrief_practice_meta
+    await pool.execute(
+      `INSERT INTO debrief_practice_meta (record_id, duration, practice_type, evaluation_result, overall_score)
+       VALUES (?, 0, 'simulation', ?, ?)
+       ON DUPLICATE KEY UPDATE evaluation_result = VALUES(evaluation_result), overall_score = VALUES(overall_score)`,
+      [id, JSON.stringify(evalResult), evalResult.score]
+    );
+
+    res.json({
+      code: 0,
+      data: evalResult,
+    } as ApiResponse);
+  } catch (err) {
+    console.error('Simulation finish error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
+// GET /debriefs/:id/simulation — 获取模拟对话历史
+router.get('/:id/simulation', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+  try {
+    const recordRows = await query('SELECT record_id FROM debrief_records WHERE record_id = ?', [id]);
+    if (recordRows.length === 0) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
+    }
+
+    const roundRows = await query(
+      'SELECT round_number, customer_question, sales_reply FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC',
+      [id]
+    );
+
+    const rounds = roundRows.map((r: any) => ({
+      round_number: r.round_number,
+      customer_question: r.customer_question,
+      sales_reply: r.sales_reply,
+    }));
+
+    res.json({
+      code: 0,
+      data: { record_id: id, rounds },
+    } as ApiResponse);
+  } catch (err) {
+    console.error('Get simulation error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });

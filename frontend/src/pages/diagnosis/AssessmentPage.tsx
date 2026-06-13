@@ -81,6 +81,7 @@ export function AssessmentPage() {
 
 function NewAssessmentForm() {
   const [productLineId, setProductLineId] = useState('');
+  const [assessmentName, setAssessmentName] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedUrl, setRecordedUrl] = useState('');
@@ -156,7 +157,7 @@ function NewAssessmentForm() {
     setError('');
     try {
       const file = recordedBlob instanceof File ? recordedBlob : new File([recordedBlob], 'recording.webm', { type: 'audio/webm' });
-      const res = await uploadAudio(file, productLineId, 'intro');
+      const res = await uploadAudio(file, productLineId, 'intro', undefined, assessmentName.trim() || undefined);
       if (res.code === 0 && res.data) {
         // 跳转到练习会话页面
         window.location.href = `/employee/debrief/${res.data.record_id}/session`;
@@ -187,6 +188,19 @@ function NewAssessmentForm() {
         </p>
 
         <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              评估名称
+            </label>
+            <input
+              type="text"
+              value={assessmentName}
+              onChange={(e) => setAssessmentName(e.target.value)}
+              placeholder="如：王经理 3月电话复盘"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               选择产品线

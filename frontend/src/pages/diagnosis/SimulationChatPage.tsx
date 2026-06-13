@@ -4,19 +4,47 @@ import {
   Send,
   Loader2,
   ArrowLeft,
-  Mic,
-  Square,
   Trophy,
   XCircle,
+  MessageCircle,
+  CheckCircle2,
+  Mic,
+  Square,
 } from 'lucide-react';
-import {
-  startDialogueRound,
-  saveDialogueReply,
-  type DialogueRound,
-  getDialogueHistory,
-} from '../../api/debrief';
+import { authHeaders } from '../../api/auth';
 import { IFlytekAsrClient } from '../../utils/iflytek-asr';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+
+interface Round {
+  round_number: number;
+  customer_question: string;
+  sales_reply?: string;
+}
+
+interface SimulationState {
+  role: string;
+  status: string;
+  difficulty: string;
+  productLineId?: string;
+}
+
+interface EvaluationResult {
+  score: number;
+  dimensionScores: {
+    opening: number;
+    needsProbing: number;
+    productIntro: number;
+    objectionHandling: number;
+    closing: number;
+  };
+  feedback: string;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+}
+
+// 角色映射
 const roleMap: Record<string, { name: string; emoji: string }> = {
   decision_maker: { name: '决策者', emoji: '👔' },
   user: { name: '使用者', emoji: '👷' },
@@ -31,148 +59,44 @@ const statusMap: Record<string, { name: string; color: string }> = {
   urgent: { name: '急迫', color: 'bg-red-50 text-red-700 border-red-200' },
 };
 
-interface LocationState {
-  role?: string;
-  status?: string;
-  difficulty?: string;
-  productLineName?: string;
-}
-
 export function SimulationChatPage() {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const state = (location.state as LocationState) || {};
+  const state = (location.state as SimulationState) || {};
 
-  const [rounds, setRounds] = useState<DialogueRound[]>([]);
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [input, setInput] = useState('');
   const [finished, setFinished] = useState(false);
-  const [success, _setSuccess] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const asrClientRef = useRef<IFlytekAsrClient | null>(null);
-  const asrFinalRef = useRef('');
 
   const roleInfo = roleMap[state.role || ''];
   const statusInfo = statusMap[state.status || ''];
 
-  // Load history or start first round
-  useEffect(() => {
-    if (!recordId) return;
-    let mounted = true;
-
-    (async () => {
-      setInitialLoading(true);
-      try {
-        const historyRes = await getDialogueHistory(recordId);
-        if (!mounted) return;
-        const historyRounds = historyRes.data.rounds;
-        if (historyRounds && historyRounds.length > 0) {
-          setRounds(historyRounds as DialogueRound[]);
-        } else {
-          const res = await startDialogueRound(recordId, 1, state.role, state.status);
-          if (!mounted) return;
-          if (res.code === 0 && res.data) {
-            setRounds([res.data]);
-          } else {
-            setError(res.message || '获取对话失败');
-          }
-        }
-      } catch (err) {
-        if (!mounted) return;
-        setError(err instanceof Error ? err.message : '网络错误');
-      } finally {
-        if (mounted) setInitialLoading(false);
-      }
-    })();
-
-    return () => { mounted = false; };
-  }, [recordId]);
-
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
-  }, [rounds, loading]);
-
-  const currentRound = rounds[rounds.length - 1];
-
-  const fetchNextRound = async (currentRoundNum: number) => {
-    const nextRoundNumber = currentRoundNum + 1;
-    try {
-      const nextRes = await startDialogueRound(recordId!, nextRoundNumber, state.role, state.status);
-      if (nextRes.code === 0 && nextRes.data) {
-        setRounds((prev) => [
-          ...prev,
-          {
-            round_number: nextRes.data.round_number,
-            customer_question: nextRes.data.customer_question,
-            difficulty: nextRes.data.difficulty,
-            expected_focus: nextRes.data.expected_focus,
-            is_last_round: false,
-          },
-        ]);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '获取下一轮失败');
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || loading || !recordId) return;
-    const reply = input.trim();
-    const currentRoundNum = currentRound?.round_number ?? 1;
-    setInput('');
-    setLoading(true);
-    setError(null);
-
-    try {
-      await saveDialogueReply(recordId, currentRoundNum, reply);
-
-      setRounds((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { ...updated[updated.length - 1], sales_reply: reply };
-        return updated;
-      });
-
-      await fetchNextRound(currentRoundNum);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFinish = async () => {
-    if (!recordId) return;
-    setFinished(true);
-    // simulation 模式不生成报告，直接返回
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  // ── 实时语音转写 ──
+  // 实时语音转写
   const startRealtimeAsr = async () => {
-    asrFinalRef.current = input;
-
     const client = new IFlytekAsrClient({
-      onText: (final, interim) => {
-        const newText = asrFinalRef.current + final + (interim ? ' ' + interim : '');
-        setInput(newText);
+      onText: (finalText: string, _interimText: string, _isFinal: boolean) => {
+        setInput((prev) => {
+          // 去重：如果新文本末尾已经包含 prev，则只用新文本
+          if (prev && finalText.startsWith(prev)) {
+            return finalText;
+          }
+          return finalText || prev;
+        });
       },
-      onError: (err) => {
-        setError(err);
+      onError: (err: string) => {
+        setError('语音转写: ' + err);
         setRecording(false);
       },
-      onStatusChange: (status) => {
+      onStatusChange: (status: 'idle' | 'connecting' | 'recording') => {
         if (status === 'recording') {
           setRecording(true);
         } else if (status === 'idle') {
@@ -189,6 +113,126 @@ export function SimulationChatPage() {
     asrClientRef.current?.stop();
     asrClientRef.current = null;
     setRecording(false);
+  };
+
+  // Load history
+  useEffect(() => {
+    if (!recordId) return;
+    let mounted = true;
+
+    (async () => {
+      setInitialLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/debriefs/${recordId}/simulation`, {
+          headers: { ...authHeaders() },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!mounted) return;
+        if (data.code === 0 && data.data?.rounds) {
+          setRounds(data.data.rounds);
+        }
+      } catch (err) {
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : '加载失败');
+      } finally {
+        if (mounted) setInitialLoading(false);
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [recordId]);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [rounds, loading]);
+
+  const handleSend = async () => {
+    if (!input.trim() || loading || !recordId) return;
+    const reply = input.trim();
+    setInput('');
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Optimistic update: show sales message immediately
+      const nextRoundNumber = rounds.length + 1;
+      const newRound: Round = {
+        round_number: nextRoundNumber,
+        customer_question: '',
+        sales_reply: reply,
+      };
+      setRounds((prev) => [...prev, newRound]);
+
+      const res = await fetch(`${API_BASE}/api/v1/debriefs/${recordId}/simulation/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          sales_message: reply,
+          role: state.role,
+          status: state.status,
+          difficulty: state.difficulty,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (data.code === 0 && data.data) {
+        setRounds((prev) => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          updated[updated.length - 1] = {
+            ...last,
+            customer_question: data.data.customer_question,
+          };
+          return updated;
+        });
+
+        // AI 被说服
+        if (data.data.is_convinced) {
+          setSuccess(true);
+          setFinished(true);
+        }
+      } else {
+        setError(data.message || '发送失败');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '网络错误');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!recordId) return;
+    setFinished(true);
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/debriefs/${recordId}/simulation/finish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (data.code === 0 && data.data) {
+        setEvaluation(data.data);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '评估失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   if (initialLoading) {
@@ -244,18 +288,8 @@ export function SimulationChatPage() {
           <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm text-center">{error}</div>
         )}
 
-        {rounds.map((round, idx) => (
-          <div key={idx} className="space-y-3">
-            {/* AI Customer */}
-            <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-                <span className="text-sm">{roleInfo?.emoji || '🧑'}</span>
-              </div>
-              <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 border shadow-sm max-w-[80%]">
-                <p className="text-sm text-gray-800 leading-relaxed">{round.customer_question}</p>
-              </div>
-            </div>
-
+        {rounds.map((round) => (
+          <div key={round.round_number} className="space-y-3">
             {/* Sales Reply */}
             {round.sales_reply && (
               <div className="flex gap-3 flex-row-reverse">
@@ -264,6 +298,18 @@ export function SimulationChatPage() {
                 </div>
                 <div className="bg-blue-600 rounded-xl rounded-tr-none px-4 py-3 shadow-sm max-w-[80%]">
                   <p className="text-sm text-white leading-relaxed">{round.sales_reply}</p>
+                </div>
+              </div>
+            )}
+
+            {/* AI Customer */}
+            {round.customer_question && (
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                  <span className="text-sm">{roleInfo?.emoji || '🧑'}</span>
+                </div>
+                <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 border shadow-sm max-w-[80%]">
+                  <p className="text-sm text-gray-800 leading-relaxed">{round.customer_question}</p>
                 </div>
               </div>
             )}
@@ -288,13 +334,14 @@ export function SimulationChatPage() {
       {/* Finished overlay */}
       {finished && (
         <div className="absolute inset-0 bg-black/40 z-20 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center max-h-[80vh] overflow-y-auto">
             {success ? (
               <>
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Trophy className="w-8 h-8 text-green-600" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-lg mb-2">成功说服客户！</h3>
+                <p className="text-sm text-gray-500 mb-2">共进行了 {rounds.length} 轮对话</p>
               </>
             ) : (
               <>
@@ -302,9 +349,87 @@ export function SimulationChatPage() {
                   <XCircle className="w-8 h-8 text-gray-400" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-lg mb-2">模拟结束</h3>
+                <p className="text-sm text-gray-500 mb-2">共进行了 {rounds.length} 轮对话</p>
               </>
             )}
-            <p className="text-sm text-gray-500 mb-2">共进行了 {rounds.length} 轮对话</p>
+
+            {/* Evaluation Report */}
+            {evaluation && (
+              <div className="mt-4 text-left space-y-3">
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-3xl font-bold text-blue-600">{evaluation.score}</span>
+                  <span className="text-sm text-gray-500">分</span>
+                </div>
+                <div className="grid grid-cols-5 gap-2 text-center">
+                  {Object.entries(evaluation.dimensionScores).map(([key, score]) => (
+                    <div key={key} className="space-y-1">
+                      <div className="text-xs text-gray-500">
+                        {key === 'opening' && '开场'}
+                        {key === 'needsProbing' && '需求'}
+                        {key === 'productIntro' && '产品'}
+                        {key === 'objectionHandling' && '异议'}
+                        {key === 'closing' && '成交'}
+                      </div>
+                      <div className={`text-sm font-bold ${score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {score}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-700 leading-relaxed">{evaluation.feedback}</p>
+                </div>
+                {evaluation.strengths.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      优点
+                    </h4>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      {evaluation.strengths.map((s, i) => (
+                        <li key={i} className="flex items-start gap-1">
+                          <span className="text-green-500 mt-0.5">•</span>
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {evaluation.weaknesses.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-1">
+                      <MessageCircle className="w-4 h-4 text-orange-500" />
+                      不足
+                    </h4>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      {evaluation.weaknesses.map((w, i) => (
+                        <li key={i} className="flex items-start gap-1">
+                          <span className="text-orange-500 mt-0.5">•</span>
+                          {w}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {evaluation.suggestions.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      建议
+                    </h4>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      {evaluation.suggestions.map((s, i) => (
+                        <li key={i} className="flex items-start gap-1">
+                          <span className="text-blue-500 mt-0.5">•</span>
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={() => navigate('/employee/diagnosis/simulation')}
               className="mt-5 w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"

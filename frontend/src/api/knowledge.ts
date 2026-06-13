@@ -303,11 +303,30 @@ export async function getMaterials(params?: { type?: string; page?: number; limi
   return (await res.json()) as PaginatedResult<MaterialItem>;
 }
 
-export async function createMaterial(input: Omit<MaterialItem, 'material_id' | 'created_at' | 'updated_at'>): Promise<{ code: number; message?: string; data?: MaterialItem }> {
+export async function createMaterial(input: {
+  title: string;
+  type: MaterialItem['type'];
+  duration?: string;
+  description?: string;
+  tags?: string[];
+  status?: string;
+  product_line_id?: string;
+  file?: File;
+}): Promise<{ code: number; message?: string; data?: MaterialItem }> {
+  const formData = new FormData();
+  formData.append('title', input.title);
+  formData.append('type', input.type);
+  if (input.duration) formData.append('duration', input.duration);
+  if (input.description) formData.append('description', input.description);
+  if (input.tags && input.tags.length > 0) formData.append('tags', JSON.stringify(input.tags));
+  if (input.status) formData.append('status', input.status);
+  if (input.product_line_id) formData.append('product_line_id', input.product_line_id);
+  if (input.file) formData.append('file', input.file);
+
   const res = await fetch(`${API_BASE}/api/v1/materials`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(input),
+    headers: { ...authHeaders() },
+    body: formData,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as { code: number; message?: string; data?: MaterialItem };

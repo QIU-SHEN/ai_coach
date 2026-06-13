@@ -87,6 +87,7 @@ export function SimulationPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('observing');
   const [productLineId, setProductLineId] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [simulationName, setSimulationName] = useState('');
   const [starting, setStarting] = useState(false);
 
   const handleStartSimulation = async () => {
@@ -96,7 +97,7 @@ export function SimulationPage() {
       // 创建一个模拟对话记录
       const roleName = customerRoles.find(r => r.id === selectedRole)?.name || '客户';
       const statusName = purchaseStatuses.find(s => s.id === selectedStatus)?.name || '';
-      const title = `情景模拟：${roleName}（${statusName}）`;
+      const title = simulationName.trim() || `情景模拟：${roleName}（${statusName}）`;
 
       const res = await createDebrief(title, '', productLineId || undefined, undefined, 'simulation');
       if (res.code === 0 && res.data) {
@@ -105,7 +106,7 @@ export function SimulationPage() {
             role: selectedRole,
             status: selectedStatus,
             difficulty,
-            productLineName: productLineId,
+            productLineId,
           },
         });
       } else {

@@ -1,61 +1,91 @@
 import { callOpenAIResponses, extractJson } from './openai';
-import type { GenerateCustomerQuestionInput, DialogueResult } from '../types/dialogue';
+import type { DialogueResult, GenerateCustomerQuestionInput } from '../types/dialogue';
 
-const SYSTEM_PROMPT_DIALOGUE = `你是一位"懂行的挑剔客户"，正在考察销售人员对产品知识的掌握程度。
+// 保留旧接口兼容
+export { generateCustomerQuestion };
 
-你会收到以下内容：
-1. 【当前轮次考察维度】—— 本轮必须围绕该维度提问
-2. 【产品资料介绍文字】—— 该产品的官方详细介绍与培训素材
-3. 【销售人员的实际语音转录文字】—— 仅作参考，了解销售在真实谈单中已经主动提及的内容
-4. 【对话历史】—— 前面几轮已经问过的问题和销售的回答
+// 新 Simulation 接口
+export interface SimulationInput {
+  // 新参数
+  role?: string;
+  status?: string;
+  productMaterialText?: string;
+  conversationHistory: Array<{ salesReply: string; customerQuestion: string }>;
+  difficulty: 'easy' | 'medium' | 'hard';
 
-你的任务是按轮次维度提出针对性问题，**评估销售对产品资料的掌握深度**。
+  // 兼容旧调用（可选）
+  round?: number;
+  weakPoints?: string[];
+  focusArea?: string;
+  strategy?: Array<{ round: number; focus: string; difficulty: 'easy' | 'medium' | 'hard' }>;
+  productLine?: string;
+  knowledgeContext?: string;
+  isFollowUp?: boolean;
+  previousRoundScore?: number;
+  transcript?: string;
+  currentFocus?: string;
+}
 
-## 六轮考察维度（每轮严格对应一个维度，不得跳维或重复）
-- 第1轮：核心定位与目标人群 —— 产品是什么、给谁用、解决什么痛点
-- 第2轮：规格参数与核心功能 —— 具体技术参数、功能细节、硬件配置
-- 第3轮：使用场景与适用人群 —— 典型使用场景、推荐给什么样的家庭/用户
-- 第4轮：具体数据与技术细节 —— 过滤精度、滤芯寿命、功率、水量等具体数字
-- 第5轮：竞品对比与差异化优势 —— 与同类产品相比的核心差异、为什么选这款
-- 第6轮：综合价值与购买理由 —— 性价比、长期价值、一台顶多台的核心价值
+export interface SimulationResult {
+  customerQuestion: string;
+  isConvinced: boolean;
+  difficulty: 'easy' | 'medium' | 'hard';
+  expectedFocus: string;
+}
 
-## 规则
-1. 你只扮演客户， NEVER 扮演销售或教练。
-2. **严格按照当前轮次维度提问**，不问其他维度，也不重复前面轮次已经问过的角度。
-3. **不要纠错**。转录文字中的错误不在本轮处理，后续评估报告会单独记录。你只需要基于产品资料问该维度的细节问题。
-4. 参考转录文字是为了避免问"销售已经主动讲过且讲对了"的内容，但如果转录里没有涉及当前维度的细节，就必须追问。
-5. 问题要口语化、自然，像真实客户在购买时 genuinely 想知道的事，不要像考试题。
-6. 优先问产品资料中的**具体数字、参数、对比数据**，避免泛泛地问"有什么好处"。
-7. 每轮只输出一个问题，不解释、不展开。
-8. 如果是追问轮（isFollowUp=true），要在上一轮同一维度上深入或换角度：
-   - 上轮答对（previousRoundScore>=70）：提高难度，问更细的数据或应用场景
-   - 上轮答错（previousRoundScore<70）：降低难度，换个更基础的角度，但仍在同一维度内
+const SYSTEM_PROMPT = `你是一位挑剔、难缠的真实客户，正在考察净水器销售人员。
 
-同时生成 expected_answer（标准答案），必须严格基于【产品资料介绍文字】。
+【当前角色与心态】
+{ROLE}
+{STATUS}
 
-输出格式（严格 JSON）：
+【产品背景信息】
+{PRODUCT_MATERIAL}
+
+【对话历史】
+{HISTORY}
+
+【重要规则】
+1. 每轮只说 1 个问题或 1 句回应，不要一次抛多个问题
+2. 说话要像真实客户：口语化、有犹豫、有反问、带情绪
+3. 字数控制在 30-80 字以内
+4. 根据销售人员的回答质量调整你的态度：
+   * 回答得好（用了具体数据、解决了你的顾虑）→ 态度软化，但仍保持一点犹豫
+   * 回答得差（答非所问、数据错误、回避问题）→ 更刁难，继续追问
+   * 完全没回答你的问题 → 直接表示不满，重复或换一个角度问
+5. 只有当销售明确促成成交（如说"今天定下来"、"签合同"、"付款"等），你才考虑成交
+6. 成交时必须明确说出购买意愿（如"那就定一台"、"帮我安排安装"），设置 is_convinced = true
+7. 严禁因为对话时间长而轻易同意购买
+8. 你永远不会扮演销售或教练，你只扮演客户
+
+【难度设定】
+{DIFFICULTY}
+
+输出严格按以下 JSON 格式，不要有任何额外说明：
 {
-  "customerQuestion": "...",
+  "customerQuestion": "你的提问或回应",
   "difficulty": "medium",
-  "expectedFocus": "期望销售准确说出RO膜过滤精度和滤芯更换周期",
-  "expectedAnswer": "基于产品资料介绍的标准答案"
+  "expectedFocus": "期望销售关注的方向",
+  "is_convinced": false
 }`;
 
-export async function generateCustomerQuestion(
-  input: GenerateCustomerQuestionInput
-): Promise<DialogueResult> {
-  let rolePrompt = '';
+async function generateCustomerQuestion(
+  input: SimulationInput
+): Promise<DialogueResult & { isConvinced?: boolean }> {
+  // 角色设定
+  let rolePrompt = '你是普通消费者，没有特殊身份设定。';
   if (input.role) {
     const roleNames: Record<string, string> = {
-      decision_maker: '决策者（高层，关注 ROI 和战略价值）',
-      user: '使用者（一线员工，关注易用性和效率）',
-      technical: '技术顾问（IT/技术负责人，关注技术细节）',
-      procurement: '采购（采购部门，关注价格和合同条款）',
-      admin: '行政（关注流程合规）',
+      decision_maker: '你是决策者（高层，关注 ROI 和战略价值）',
+      user: '你是使用者（一线员工，关注易用性和效率）',
+      technical: '你是技术顾问（IT/技术负责人，关注技术细节）',
+      procurement: '你是采购（采购部门，关注价格和合同条款）',
+      admin: '你是行政（关注流程合规）',
     };
-    rolePrompt = `\n\n## 你的角色设定\n你是${roleNames[input.role] || input.role}，你的提问风格、关注点和语气都要符合这个角色。`;
+    rolePrompt = `${roleNames[input.role] || '你是' + input.role}`;
   }
 
+  // 采购心态
   let statusPrompt = '';
   if (input.status) {
     const statusNames: Record<string, string> = {
@@ -63,10 +93,141 @@ export async function generateCustomerQuestion(
       comparing: '对比（正在对比多家供应商）',
       urgent: '急迫（有明确需求，希望快速推进）',
     };
-    statusPrompt = `\n\n## 你的采购心态\n当前状态是「${statusNames[input.status] || input.status}」，这会影响你提问的态度和紧迫程度。`;
+    statusPrompt = `当前采购心态：${statusNames[input.status] || input.status}`;
   }
 
-  const finalPrompt = SYSTEM_PROMPT_DIALOGUE + rolePrompt + statusPrompt;
-  const text = await callOpenAIResponses(finalPrompt, JSON.stringify(input));
-  return extractJson<DialogueResult>(text);
+  // 对话历史
+  let historyPrompt = '';
+  if (input.conversationHistory && input.conversationHistory.length > 0) {
+    const lines: string[] = [];
+    for (const r of input.conversationHistory) {
+      if (r.customerQuestion) {
+        lines.push(`客户：${r.customerQuestion}`);
+      }
+      if (r.salesReply) {
+        lines.push(`销售：${r.salesReply}`);
+      }
+    }
+    historyPrompt = lines.join('\n');
+  } else {
+    historyPrompt = '（这是对话的开始）';
+  }
+
+  // 难度提示
+  const difficultyPrompts: Record<string, string> = {
+    easy: '难度：简单。你比较容易沟通，问题相对基础，不会刻意刁难。',
+    medium: '难度：中等。你会提出一些有挑战性的问题，但态度还算客气。',
+    hard: '难度：困难。你非常挑剔、难缠，经常打断、反问、质疑，态度强硬。',
+  };
+  const difficultyPrompt = difficultyPrompts[input.difficulty] || difficultyPrompts.medium;
+
+  // 产品资料
+  const productMaterialText = input.productMaterialText || input.knowledgeContext || '暂无产品资料';
+
+  const finalPrompt = SYSTEM_PROMPT
+    .replace('{ROLE}', rolePrompt)
+    .replace('{STATUS}', statusPrompt)
+    .replace('{PRODUCT_MATERIAL}', productMaterialText)
+    .replace('{HISTORY}', historyPrompt)
+    .replace('{DIFFICULTY}', difficultyPrompt);
+
+  const text = await callOpenAIResponses(finalPrompt, '请生成客户回应');
+
+  const result = extractJson<{
+    customerQuestion: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+    expectedFocus: string;
+    is_convinced?: boolean;
+  }>(text);
+
+  return {
+    customerQuestion: result.customerQuestion,
+    difficulty: result.difficulty,
+    expectedFocus: result.expectedFocus,
+    isConvinced: result.is_convinced ?? false,
+  };
+}
+
+// 评估报告生成
+export interface EvaluationInput {
+  conversationHistory: Array<{ customerQuestion: string; salesReply: string }>;
+}
+
+export interface EvaluationResult {
+  score: number;
+  dimensionScores: {
+    opening: number;
+    needsProbing: number;
+    productIntro: number;
+    objectionHandling: number;
+    closing: number;
+  };
+  feedback: string;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+}
+
+const EVALUATION_PROMPT = `你是一位资深销售培训师。请基于以下对话记录，对销售人员的表现进行评估。
+
+对话记录：
+{CONVERSATION}
+
+请从以下5个维度评分（0-100），并给出总体评价：
+1. 开场破冰 — 是否能自然引入话题，建立初步信任
+2. 需求挖掘 — 是否通过提问了解客户真实需求
+3. 产品介绍 — 是否准确、有针对性地介绍产品
+4. 异议处理 — 能否妥善处理客户疑虑
+5. 成交推动 — 是否能适时促成交易
+
+输出严格按以下 JSON 格式，不要有任何额外说明：
+{
+  "score": 78,
+  "dimensionScores": {
+    "opening": 80,
+    "needsProbing": 75,
+    "productIntro": 82,
+    "objectionHandling": 76,
+    "closing": 79
+  },
+  "feedback": "总体评价...",
+  "strengths": ["优点1", "优点2"],
+  "weaknesses": ["不足1", "不足2"],
+  "suggestions": ["建议1", "建议2"]
+}`;
+
+export async function evaluateSimulation(
+  input: EvaluationInput
+): Promise<EvaluationResult> {
+  const conversationText = input.conversationHistory
+    .map((r, i) => `第${i + 1}轮：\n客户：${r.customerQuestion}\n销售：${r.salesReply || '（未回答）'}`)
+    .join('\n\n');
+
+  const prompt = EVALUATION_PROMPT.replace('{CONVERSATION}', conversationText);
+
+  const text = await callOpenAIResponses(prompt, '请评估销售表现');
+
+  const result = extractJson<{
+    score: number;
+    dimensionScores: EvaluationResult['dimensionScores'];
+    feedback: string;
+    strengths: string[];
+    weaknesses: string[];
+    suggestions: string[];
+  }>(text);
+
+  return {
+    score: result.score ?? 0,
+    dimensionScores: result.dimensionScores ?? {
+      opening: 0,
+      needsProbing: 0,
+      productIntro: 0,
+      objectionHandling: 0,
+      closing: 0,
+    },
+    feedback: result.feedback ?? '暂无评价',
+    strengths: result.strengths ?? [],
+    weaknesses: result.weaknesses ?? [],
+    suggestions: result.suggestions ?? [],
+  };
 }

@@ -13,6 +13,7 @@ import { aiClassifyRawTexts, aiTagClassified } from '../services/ai-classify';
 import { aiExtractTexts } from '../services/ai-extract-texts';
 import { callOpenAIChat } from '../services/openai-chat';
 import { generateProductDescription } from '../services/ai-generate-description';
+import { saveUpload, deleteFile } from '../services/storage';
 
 const router = Router();
 
@@ -469,17 +470,34 @@ router.get('/materials', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/materials', authMiddleware, requireRole('admin'), async (req, res) => {
-  const { title, type, duration, file_url, description, tags } = req.body;
+router.post('/materials', authMiddleware, requireRole('manager', 'admin'), upload.single('file'), async (req, res) => {
+  const { title, type, duration, description, tags } = req.body;
+  const file = req.file;
+
   if (!title || !type) {
+    if (file) fs.unlinkSync(file.path);
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 title 或 type' } as ApiResponse);
   }
+
+  let fileUrl: string | null = null;
+  if (file) {
+    try {
+      const ext = path.extname(file.originalname).slice(1) || 'bin';
+      fileUrl = await saveUpload(file.path, uuidv4(), ext, 'materials');
+    } catch (err) {
+      console.error('Material file upload error:', err);
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '文件上传失败' } as ApiResponse);
+    }
+  }
+
   try {
     const id = uuidv4();
+    const tagArray = tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [];
     await pool.execute(
       `INSERT INTO training_materials (material_id, title, type, duration, file_url, description, tags)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, title, type, duration || null, file_url || null, description || null, tags && tags.length > 0 ? JSON.stringify(tags) : null]
+      [id, title, type, duration || null, fileUrl, description || null, tagArray.length > 0 ? JSON.stringify(tagArray) : null]
     );
     const rows = await query('SELECT * FROM training_materials WHERE material_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
@@ -489,7 +507,7 @@ router.post('/materials', authMiddleware, requireRole('admin'), async (req, res)
   }
 });
 
-router.put('/materials/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+router.put('/materials/:id', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
   const { id } = req.params;
   const { title, type, duration, file_url, description, tags, status } = req.body;
   try {
@@ -510,7 +528,7 @@ router.put('/materials/:id', authMiddleware, requireRole('admin'), async (req, r
   }
 });
 
-router.delete('/materials/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+router.delete('/materials/:id', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
   const { id } = req.params;
   try {
     await pool.execute('DELETE FROM training_materials WHERE material_id = ?', [id]);
@@ -533,6 +551,38 @@ router.get('/materials/:id/download', authMiddleware, async (req, res) => {
     if (!material.file_url) {
       return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: '文件不存在' } as ApiResponse);
     }
+
+    // If it's an OSS URL, stream through the server
+    if (material.file_url.startsWith('http://') || material.file_url.startsWith('https://')) {
+      const response = await fetch(material.file_url);
+      if (!response.ok) {
+        return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '无法获取文件' } as ApiResponse);
+      }
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(material.title)}"`);
+      if (response.body) {
+        const reader = response.body.getReader();
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(value);
+            }
+            res.end();
+          } catch (err) {
+            console.error('Stream error:', err);
+            if (!res.headersSent) res.status(500).end();
+          }
+        };
+        pump();
+        return;
+      }
+      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '无法读取文件流' } as ApiResponse);
+    }
+
+    // Local file fallback
     const filePath = path.resolve(process.cwd(), material.file_url.replace(/\\/g, '/').replace(/^\//, ''));
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: '文件不存在' } as ApiResponse);
@@ -606,6 +656,12 @@ router.get('/product-assets/:asset_id/file', async (req, res) => {
     }
 
     const dbPath = rows[0].file_path;
+
+    // If it's an OSS URL, redirect to it
+    if (dbPath.startsWith('http://') || dbPath.startsWith('https://')) {
+      return res.redirect(dbPath);
+    }
+
     // New uploads store path like "uploads/assets/...", old assets store relative to PRODUCT_DATA_ROOT
     const filePath = dbPath.startsWith('uploads/') || dbPath.startsWith('uploads\\')
       ? path.resolve(process.cwd(), dbPath)
@@ -653,22 +709,16 @@ router.post('/product-assets/upload', authMiddleware, requireRole('manager', 'ad
     // multer on Windows encodes originalname as Latin1, re-decode to UTF-8
     const originalName = Buffer.from(file.originalname, 'latin1').toString('utf-8');
     const ext = path.extname(originalName) || path.extname(file.filename || '') || '';
-    const fileName = `${assetId}${ext}`;
-    const relDir = `uploads/assets/${product_line_id}/${asset_type}`;
-    const absDir = path.resolve(process.cwd(), relDir);
-    fs.mkdirSync(absDir, { recursive: true });
 
-    const absPath = path.join(absDir, fileName);
-    fs.renameSync(file.path, absPath);
+    // Upload to OSS
+    const ossUrl = await saveUpload(file.path, assetId, ext.replace('.', ''), 'assets');
 
-    const filePath = `${relDir}/${fileName}`;
-    const fileUrl = `/${filePath}`;
     const assetTitle = title || path.basename(originalName, ext);
 
     await pool.execute(
       `INSERT INTO product_assets (asset_id, product_line_id, title, asset_type, file_path, file_url, status)
        VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-      [assetId, product_line_id, assetTitle, asset_type, filePath, fileUrl]
+      [assetId, product_line_id, assetTitle, asset_type, ossUrl, ossUrl]
     );
 
     const rows = await query(
@@ -694,13 +744,9 @@ router.delete('/product-assets/:asset_id', authMiddleware, requireRole('manager'
       return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
     }
 
-    const filePath = rows[0].file_path;
-    // delete disk file if stored in uploads/
-    if (filePath && filePath.startsWith('uploads/')) {
-      const absPath = path.resolve(process.cwd(), filePath);
-      if (fs.existsSync(absPath)) {
-        fs.unlinkSync(absPath);
-      }
+    // delete from storage (OSS or local)
+    if (rows[0].file_path) {
+      await deleteFile(rows[0].file_path).catch(err => console.warn('Failed to delete file:', err));
     }
 
     await pool.execute('DELETE FROM product_assets WHERE asset_id = ?', [asset_id]);
@@ -725,13 +771,10 @@ router.post('/product-assets/batch-delete', authMiddleware, requireRole('admin')
       asset_ids
     );
 
-    // delete disk files stored in uploads/
+    // delete from storage (OSS or local)
     for (const row of rows) {
-      if (row.file_path && row.file_path.startsWith('uploads/')) {
-        const absPath = path.resolve(process.cwd(), row.file_path);
-        if (fs.existsSync(absPath)) {
-          fs.unlinkSync(absPath);
-        }
+      if (row.file_path) {
+        await deleteFile(row.file_path).catch(err => console.warn('Failed to delete file:', err));
       }
     }
 

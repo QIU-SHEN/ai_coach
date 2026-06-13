@@ -190,7 +190,8 @@ export function uploadAudio(
   file: File,
   productLine: string,
   practiceType: string = 'intro',
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  title?: string,
 ): Promise<UploadResult> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -198,6 +199,9 @@ export function uploadAudio(
     formData.append('audio', file);
     formData.append('product_line', productLine);
     formData.append('practice_type', practiceType);
+    if (title) {
+      formData.append('title', title);
+    }
 
     formData.append('mode', 'call_recording');
     xhr.open('POST', `${API_BASE}/api/v1/debriefs`);

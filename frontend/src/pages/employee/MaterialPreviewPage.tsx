@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Download, Headphones, Play, FileText, Loader2 } from 'lucide-react';
-import { getMaterialById, downloadMaterial, type MaterialItem } from '../../api/knowledge';
+import { getMaterialById, type MaterialItem } from '../../api/knowledge';
 import { authHeaders } from '../../api/auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
@@ -34,30 +34,45 @@ export function MaterialPreviewPage() {
   useEffect(() => {
     if (!material) return;
 
+    // 只有需要文件预览的类型才 fetch
+    if (!['pdf', 'video', 'audio'].includes(material.type)) return;
+
+    const controller = new AbortController();
+    let isAborted = false;
+
     const fetchBlob = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/v1/materials/${material.material_id}/download`, {
           headers: { ...authHeaders() },
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error('获取失败');
         const blob = await res.blob();
+        if (isAborted) return;
         const url = window.URL.createObjectURL(blob);
         setBlobUrl(url);
-      } catch {
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
         setError('预览加载失败');
       }
     };
 
-    if (material.type === 'pdf' || material.type === 'video' || material.type === 'audio') {
-      fetchBlob();
-    }
+    fetchBlob();
 
+    return () => {
+      isAborted = true;
+      controller.abort();
+    };
+  }, [material]);
+
+  // cleanup blob url
+  useEffect(() => {
     return () => {
       if (blobUrl) {
         window.URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [material]);
+  }, [blobUrl]);
 
   if (loading) {
     return (
@@ -72,22 +87,35 @@ export function MaterialPreviewPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-xl border p-8 text-center max-w-md">
           <p className="text-red-900 font-medium">{error || '资料不存在'}</p>
-          <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-            返回
+          <button onClick={() => navigate('/employee/materials')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+            返回资料列表
           </button>
         </div>
       </div>
     );
   }
 
-  const downloadUrl = `${API_BASE}/api/v1/materials/${material.material_id}/download`;
+  // 下载：通过后端接口下载
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = `${API_BASE}/api/v1/materials/${material.material_id}/download`;
+    link.setAttribute('download', material.title);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 返回资料列表
+  const handleBack = () => {
+    navigate('/employee/materials');
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div>
@@ -107,7 +135,7 @@ export function MaterialPreviewPage() {
           </div>
         </div>
         <button
-          onClick={() => downloadMaterial(material.material_id, material.title)}
+          onClick={handleDownload}
           className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
         >
           <Download className="w-4 h-4" />
@@ -120,30 +148,55 @@ export function MaterialPreviewPage() {
         <div className="max-w-5xl mx-auto bg-white rounded-xl border overflow-hidden">
           {material.type === 'pdf' && (
             <div className="h-[calc(100vh-180px)]">
-              <iframe
-                src={blobUrl || downloadUrl}
-                className="w-full h-full border-0"
-                title={material.title}
-              />
+              {blobUrl ? (
+                <iframe
+                  src={blobUrl}
+                  className="w-full h-full border-0"
+                  title={material.title}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                    <p className="text-sm text-gray-500">加载预览中...</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {material.type === 'video' && (
             <div className="flex items-center justify-center bg-black p-4">
-              <video
-                controls
-                src={blobUrl || downloadUrl}
-                className="w-full max-h-[calc(100vh-180px)] rounded-lg"
-                style={{ maxWidth: '100%' }}
-              />
+              {blobUrl ? (
+                <video
+                  controls
+                  src={blobUrl}
+                  className="w-full max-h-[calc(100vh-180px)] rounded-lg"
+                  style={{ maxWidth: '100%' }}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-20">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                  <p className="text-sm text-gray-500">加载预览中...</p>
+                </div>
+              )}
             </div>
           )}
 
           {material.type === 'audio' && (
             <div className="flex flex-col items-center justify-center p-12 bg-gradient-to-b from-blue-50 to-white">
-              <Headphones className="w-24 h-24 text-blue-400 mb-8" />
-              <p className="text-lg font-medium text-gray-700 mb-4">{material.title}</p>
-              <audio controls src={blobUrl || downloadUrl} className="w-full max-w-md" />
+              {blobUrl ? (
+                <>
+                  <Headphones className="w-24 h-24 text-blue-400 mb-8" />
+                  <p className="text-lg font-medium text-gray-700 mb-4">{material.title}</p>
+                  <audio controls src={blobUrl} className="w-full max-w-md" />
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                  <p className="text-sm text-gray-500">加载预览中...</p>
+                </div>
+              )}
             </div>
           )}
 

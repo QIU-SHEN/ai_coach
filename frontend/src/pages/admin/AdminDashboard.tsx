@@ -355,30 +355,21 @@ export function KnowledgeBaseTab() {
                     const ext = uploadFiles[0].name.split('.').pop()?.toLowerCase() || '';
                     const typeMap: Record<string, MaterialItem['type']> = { mp4: 'video', mov: 'video', pdf: 'pdf', mp3: 'audio', wav: 'audio', m4a: 'audio' };
                     const fileType = typeMap[ext] || 'article';
-                    const plId = uploadProductLine || productLines[0]?.product_line_id;
-                    const uploadRes = await uploadAsset(uploadFiles[0], plId, 'manual', uploadTitle.trim(), (progress) => {
-                      setUploadProgress((prev) => ({ ...prev, [uploadFiles[0].name]: progress }));
+                    const createRes = await createMaterial({
+                      title: uploadTitle.trim(),
+                      type: fileType,
+                      duration: uploadDuration.trim() || undefined,
+                      description: uploadDescription.trim() || undefined,
+                      tags: [],
+                      status: 'active',
+                      product_line_id: uploadProductLine || undefined,
+                      file: uploadFiles[0],
                     });
-                    if (uploadRes.code === 0 && uploadRes.data) {
-                      const fileUrl = `/api/v1/product-assets/${uploadRes.data.asset_id}/file`;
-                      const createRes = await createMaterial({
-                        title: uploadTitle.trim(),
-                        type: fileType,
-                        duration: uploadDuration.trim() || undefined,
-                        file_url: fileUrl,
-                        description: uploadDescription.trim() || undefined,
-                        tags: [],
-                        status: 'active',
-                        product_line_id: uploadProductLine || undefined,
-                      });
-                      if (createRes.code === 0) {
-                        setShowUploadModal(false);
-                        loadMaterials(1);
-                      } else {
-                        setError(createRes.message || '创建资料失败');
-                      }
+                    if (createRes.code === 0) {
+                      setShowUploadModal(false);
+                      loadMaterials(1);
                     } else {
-                      setError(uploadRes.message || '上传失败');
+                      setError(createRes.message || '创建资料失败');
                     }
                   } catch (err) {
                     setError(err instanceof Error ? err.message : '上传失败');
