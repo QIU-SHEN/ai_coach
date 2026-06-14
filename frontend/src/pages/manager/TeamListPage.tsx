@@ -123,7 +123,7 @@ function RecordCard({ record, onClick, onToggleShowcase }: { record: DebriefReco
             <div className="flex items-center gap-2">
               <span className="font-medium text-sm text-gray-900 truncate">{title}</span>
               <Badge variant={isCallRecording ? 'purple' : 'info'} className="text-[10px]">
-                {isCallRecording ? '谈单录音' : '谈后总结'}
+                {isCallRecording ? '能力评估' : '复盘记录'}
               </Badge>
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
@@ -395,11 +395,11 @@ export function TeamListPage() {
 
             {/* 复盘记录 */}
             <div className="grid md:grid-cols-2 gap-4">
-              {/* 谈后总结 */}
+              {/* 复盘记录 */}
               <div>
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-blue-600" />
-                  谈后总结
+                  复盘记录
                   <span className="text-xs font-normal text-gray-400">({postMeetingRecords.length})</span>
                 </h3>
                 <div className="space-y-3">
@@ -411,16 +411,16 @@ export function TeamListPage() {
                     />
                   ))}
                   {postMeetingRecords.length === 0 && (
-                    <p className="text-sm text-gray-400 py-2">暂无谈后总结记录</p>
+                    <p className="text-sm text-gray-400 py-2">暂无复盘记录</p>
                   )}
                 </div>
               </div>
 
-              {/* 谈单录音 */}
+              {/* 能力评估 */}
               <div>
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                   <PhoneCall className="w-4 h-4 text-purple-600" />
-                  谈单录音
+                  能力评估
                   <span className="text-xs font-normal text-gray-400">({callRecordingRecords.length})</span>
                 </h3>
                 <div className="space-y-3">
@@ -445,7 +445,7 @@ export function TeamListPage() {
                     />
                   ))}
                   {callRecordingRecords.length === 0 && (
-                    <p className="text-sm text-gray-400 py-2">暂无谈单录音记录</p>
+                    <p className="text-sm text-gray-400 py-2">暂无能力评估记录</p>
                   )}
                 </div>
               </div>

@@ -11,14 +11,14 @@ function ModeBadge({ mode }: { mode?: string }) {
     return (
       <Badge variant="purple" className="flex items-center gap-1">
         <PhoneCall className="w-3 h-3" />
-        谈单录音
+        能力评估
       </Badge>
     );
   }
   return (
     <Badge variant="info" className="flex items-center gap-1">
       <MessageSquare className="w-3 h-3" />
-      谈后总结
+      复盘记录
     </Badge>
   );
 }
@@ -133,27 +133,27 @@ export function DebriefListPage() {
       {!loading && records.length > 0 && (
         <div className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
-            {/* 谈后总结 */}
+            {/* 复盘记录 */}
             <div>
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
-                谈后总结
+                复盘记录
               </h2>
               <div className="space-y-3">
                 {records.filter((r) => r.debrief_mode === 'post_meeting').map((r) => (
                   <DebriefCard key={r.record_id} record={r} productLineName={getProductLineName(r.product_line_id)} onClick={() => navigate(`/employee/debrief/${r.record_id}`)} />
                 ))}
                 {records.filter((r) => r.debrief_mode === 'post_meeting').length === 0 && (
-                  <p className="text-sm text-gray-400 py-2">暂无谈后总结记录</p>
+                  <p className="text-sm text-gray-400 py-2">暂无复盘记录</p>
                 )}
               </div>
             </div>
 
-            {/* 谈单录音 */}
+            {/* 能力评估 */}
             <div>
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <PhoneCall className="w-4 h-4" />
-                谈单录音
+                能力评估
               </h2>
               <div className="space-y-3">
                 {records.filter((r) => r.debrief_mode === 'call_recording').map((r) => (
@@ -171,7 +171,7 @@ export function DebriefListPage() {
                   />
                 ))}
                 {records.filter((r) => r.debrief_mode === 'call_recording').length === 0 && (
-                  <p className="text-sm text-gray-400 py-2">暂无谈单录音记录</p>
+                  <p className="text-sm text-gray-400 py-2">暂无能力评估记录</p>
                 )}
               </div>
             </div>

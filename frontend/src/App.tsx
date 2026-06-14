@@ -103,6 +103,7 @@ export default function App() {
             <Route path="team/:id/debrief" element={<DebriefReportPage />} />
             <Route path="knowledge" element={<AdminDashboard tab="knowledge" />} />
             <Route path="knowledge/material/:materialId/quiz" element={<MaterialQuizManagePage />} />
+            <Route path="learning/material/:materialId" element={<MaterialPreviewPage />} />
             <Route path="assets" element={<ProductMaterialsView basePath="/manager/assets/product" allowCreateLine={true} />} />
             <Route path="assets/product/:productLineId" element={<ProductAssetsOverviewPage />} />
             <Route path="assets/product/:productLineId/quiz" element={<ProductQuizConfigPage />} />
@@ -121,6 +122,7 @@ export default function App() {
             <Route path="team/:id/debrief" element={<DebriefReportPage />} />
             <Route path="knowledge" element={<AdminDashboard tab="knowledge" />} />
             <Route path="knowledge/material/:materialId/quiz" element={<MaterialQuizManagePage />} />
+            <Route path="learning/material/:materialId" element={<MaterialPreviewPage />} />
             <Route path="assets" element={<ProductMaterialsView basePath="/admin/assets/product" allowCreateLine={true} />} />
             <Route path="assets/product/:productLineId" element={<ProductAssetsOverviewPage />} />
             <Route path="assets/product/:productLineId/quiz" element={<ProductQuizConfigPage />} />

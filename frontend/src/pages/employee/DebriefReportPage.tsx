@@ -19,14 +19,14 @@ function ModeBadge({ mode }: { mode?: string }) {
     return (
       <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs flex items-center gap-1">
         <PhoneCall className="w-3 h-3" />
-        谈单录音
+        能力评估
       </span>
     );
   }
   return (
     <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs flex items-center gap-1">
       <MessageSquare className="w-3 h-3" />
-      谈后总结
+      复盘记录
     </span>
   );
 }

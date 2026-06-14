@@ -150,7 +150,7 @@ export function DebriefNewPage() {
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            谈后总结
+            复盘记录
           </button>
           <button
             onClick={() => setMode('call_recording')}
@@ -161,7 +161,7 @@ export function DebriefNewPage() {
             }`}
           >
             <PhoneCall className="w-4 h-4" />
-            谈单录音
+            能力评估
           </button>
         </div>
 

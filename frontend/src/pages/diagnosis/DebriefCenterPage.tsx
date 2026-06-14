@@ -22,7 +22,7 @@ export function DebriefCenterPage() {
     getDebriefList()
       .then((res) => {
         if (res.code === 0 && res.data) {
-          // 只保留 post_meeting（谈后总结）
+          // 只保留 post_meeting（复盘记录）
           const postMeetingRecords = res.data.list.filter(
             (r) => r.debrief_mode === 'post_meeting'
           );

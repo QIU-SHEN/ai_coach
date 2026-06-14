@@ -482,12 +482,18 @@ router.post('/materials', authMiddleware, requireRole('manager', 'admin'), uploa
   let fileUrl: string | null = null;
   if (file) {
     try {
+      // 本地存储：将 multer 临时文件移动到 uploads/materials/
       const ext = path.extname(file.originalname).slice(1) || 'bin';
-      fileUrl = await saveUpload(file.path, uuidv4(), ext, 'materials');
+      const destDir = path.resolve(process.cwd(), 'uploads/materials');
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+      const destName = `${uuidv4()}.${ext}`;
+      const destPath = path.join(destDir, destName);
+      fs.renameSync(file.path, destPath);
+      fileUrl = `/uploads/materials/${destName}`;
     } catch (err) {
-      console.error('Material file upload error:', err);
+      console.error('Material file save error:', err);
       if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '文件上传失败' } as ApiResponse);
+      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '文件保存失败' } as ApiResponse);
     }
   }
 
@@ -531,6 +537,11 @@ router.put('/materials/:id', authMiddleware, requireRole('manager', 'admin'), as
 router.delete('/materials/:id', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
   const { id } = req.params;
   try {
+    // 先获取文件路径，以便删除本地文件
+    const rows = await query('SELECT file_url FROM training_materials WHERE material_id = ?', [id]);
+    if (rows.length > 0 && rows[0].file_url) {
+      await deleteFile(rows[0].file_url).catch(err => console.warn('Failed to delete file:', err));
+    }
     await pool.execute('DELETE FROM training_materials WHERE material_id = ?', [id]);
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {

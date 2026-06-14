@@ -87,7 +87,7 @@ export function SimulationPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('observing');
   const [productLineId, setProductLineId] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
-  const [simulationName, setSimulationName] = useState('');
+  const [simulationName] = useState('');
   const [starting, setStarting] = useState(false);
 
   const handleStartSimulation = async () => {

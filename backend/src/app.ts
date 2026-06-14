@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { initDb } from './db';
 import practicesRouter from './routes/practices';
 import authRouter from './routes/auth';
@@ -22,6 +23,37 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Serve local uploaded files (training materials, etc.)
+// 强制内联预览，避免浏览器自动下载
+const uploadsStatic = path.resolve(process.cwd(), 'uploads');
+
+app.use('/uploads', (req, res, next) => {
+  // 设置 CORS 头，确保跨域 iframe 可以加载
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+}, express.static(uploadsStatic, {
+  setHeaders: (res, filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.mp4': 'video/mp4',
+      '.mp3': 'audio/mpeg',
+      '.webm': 'video/webm',
+      '.wav': 'audio/wav',
+      '.m4a': 'audio/mp4',
+      '.mov': 'video/quicktime',
+    };
+    if (mimeMap[ext]) {
+      res.setHeader('Content-Type', mimeMap[ext]);
+      res.setHeader('Content-Disposition', 'inline');
+      // 禁用缓存，避免浏览器缓存旧的响应头
+      res.setHeader('Cache-Control', 'no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    }
+  },
+}));
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/practices', practicesRouter);

@@ -661,6 +661,14 @@ export async function generateProductDescription(productLineId: string, assetIds
   return (await res.json());
 }
 
+export async function fetchMaterialPdf(id: string): Promise<ArrayBuffer> {
+  const res = await fetch(`${API_BASE}/api/v1/materials/${id}/download`, {
+    headers: { ...authHeaders() },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.arrayBuffer();
+}
+
 export async function downloadMaterial(materialId: string, title: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/materials/${materialId}/download`, {
     headers: { ...authHeaders() },

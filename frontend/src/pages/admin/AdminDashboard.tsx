@@ -60,8 +60,8 @@ export function KnowledgeBaseTab() {
 
   // Common modal state
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [modalMode] = useState<'create' | 'edit'>('create');
+  const [editingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -77,6 +77,10 @@ export function KnowledgeBaseTab() {
   const [plEditingId, setPlEditingId] = useState<string | null>(null);
   const [plSaving, setPlSaving] = useState(false);
   const [materialsLoading, setMaterialsLoading] = useState(true);
+
+  // Material delete confirmation
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState('');
 
   // Material upload modal
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -182,22 +186,6 @@ export function KnowledgeBaseTab() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!editingId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const res = await deleteMaterial(editingId);
-      if (res.code === 0) {
-        setMaterialsList((prev) => prev.filter((i) => i.material_id !== editingId));
-        setShowModal(false);
-      } else setError(res.message || '删除失败');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="space-y-4 fade-in">
@@ -233,14 +221,12 @@ export function KnowledgeBaseTab() {
                     <h3 className="font-medium text-gray-900 mb-2 line-clamp-2">{m.title}</h3>
                     {m.description && <p className="text-sm text-gray-500 line-clamp-2 mb-4">{m.description}</p>}
                     <div className="mt-auto space-y-2">
-                      <a
-                        href={m.file_url || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => navigate(`/manager/learning/material/${m.material_id}`)}
                         className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
                       >
-                        <BookOpen className="w-4 h-4" /> 资料下载
-                      </a>
+                        <BookOpen className="w-4 h-4" /> 预览资料
+                      </button>
                       <button
                         onClick={() => navigate(`material/${m.material_id}/quiz`)}
                         className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-purple-200 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50"
@@ -248,7 +234,7 @@ export function KnowledgeBaseTab() {
                         <Sparkles className="w-4 h-4" /> 题目管理
                       </button>
                       <button
-                        onClick={() => { setModalMode('edit'); setEditingId(m.material_id); handleDelete(); }}
+                        onClick={() => { setDeleteConfirmId(m.material_id); setDeleteConfirmTitle(m.title); }}
                         className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4" /> 删除
@@ -516,6 +502,50 @@ export function KnowledgeBaseTab() {
                   <button type="submit" disabled={loading} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? '保存中...' : '保存'}</button>
                 </div>
               </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">确认删除</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              确定要删除资料 <span className="font-medium text-gray-900">「{deleteConfirmTitle}」</span> 吗？<br />
+              此操作不可撤销，关联的测验题目也将被清理。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 px-4 py-2 border rounded-lg font-medium hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={async () => {
+                  if (!deleteConfirmId) return;
+                  setLoading(true);
+                  try {
+                    const res = await deleteMaterial(deleteConfirmId);
+                    if (res.code === 0) {
+                      setMaterialsList((prev) => prev.filter((i) => i.material_id !== deleteConfirmId));
+                    } else {
+                      setError(res.message || '删除失败');
+                    }
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : '网络错误');
+                  } finally {
+                    setLoading(false);
+                    setDeleteConfirmId(null);
+                  }
+                }}
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {loading ? '删除中...' : '确认删除'}
+              </button>
+            </div>
           </div>
         </div>
       )}

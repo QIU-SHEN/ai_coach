@@ -108,7 +108,7 @@ export function ProfilePage() {
 
   const completedRecords = debriefRecords.filter((r) => r.status === 'completed');
 
-  // 谈后总结：取最新一条有 personalStyle 的记录
+  // 复盘记录：取最新一条有 personalStyle 的记录
   const latestPostMeeting = completedRecords.find((r) => {
     const analysis = safeParseAnalysis(r);
     return r.debrief_mode === 'post_meeting' && analysis?.personalStyle;
@@ -116,7 +116,7 @@ export function ProfilePage() {
   const postMeetingAnalysis = latestPostMeeting ? safeParseAnalysis(latestPostMeeting) : undefined;
   let personalStyle = postMeetingAnalysis?.personalStyle;
 
-  // 谈单录音：取最新一条有 evaluation_result 的记录
+  // 能力评估：取最新一条有 evaluation_result 的记录
   const latestCallRecording = completedRecords.find(
     (r) => r.debrief_mode === 'call_recording' && r.evaluation_result
   );
@@ -299,12 +299,12 @@ export function ProfilePage() {
                           {isCallRecording ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
                               <PhoneCall className="w-3 h-3" />
-                              谈单录音
+                              能力评估
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
                               <MessageSquare className="w-3 h-3" />
-                              谈后总结
+                              复盘记录
                             </span>
                           )}
                         </div>

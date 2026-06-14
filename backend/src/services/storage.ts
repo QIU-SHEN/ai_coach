@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import { uploadToOss, getOssUrl, isOssUrl, deleteFromOss } from './oss';
 
 /**
@@ -55,13 +57,26 @@ export function extractOssKey(filePath: string): string {
 }
 
 /**
- * 删除文件（从 OSS）
+ * 删除文件（从 OSS 或本地）
  * @param filePath 文件路径或 URL
  */
 export async function deleteFile(filePath: string): Promise<void> {
-  const key = extractOssKey(filePath);
-  if (key) {
-    await deleteFromOss(key);
+  // OSS URL
+  if (isOssUrl(filePath)) {
+    const key = extractOssKey(filePath);
+    if (key) {
+      await deleteFromOss(key);
+    }
+    return;
+  }
+
+  // 本地文件路径
+  const localPath = filePath.startsWith('/') || filePath.startsWith('uploads/')
+    ? path.resolve(process.cwd(), filePath.replace(/^\//, ''))
+    : path.resolve(process.cwd(), filePath);
+
+  if (fs.existsSync(localPath)) {
+    fs.unlinkSync(localPath);
   }
 }
 

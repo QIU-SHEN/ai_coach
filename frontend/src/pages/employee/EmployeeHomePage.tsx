@@ -167,12 +167,12 @@ export function EmployeeHomePage() {
                         {isCallRecording ? (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
                             <PhoneCall className="w-3 h-3" />
-                            谈单录音
+                            能力评估
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
                             <MessageSquare className="w-3 h-3" />
-                            谈后总结
+                            复盘记录
                           </span>
                         )}
                       </div>
