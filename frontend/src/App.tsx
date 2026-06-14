@@ -17,6 +17,7 @@ import { AssessmentPage } from './pages/diagnosis/AssessmentPage';
 import { SimulationPage } from './pages/diagnosis/SimulationPage';
 import { SimulationChatPage } from './pages/diagnosis/SimulationChatPage';
 import { DebriefCenterPage } from './pages/diagnosis/DebriefCenterPage';
+import { TrainingPlanPage } from './pages/sales/TrainingPlanPage';
 import { TeamListPage } from './pages/manager/TeamListPage';
 import { ReportDetailPage } from './pages/manager/ReportDetailPage';
 
@@ -88,6 +89,7 @@ export default function App() {
             <Route path="diagnosis" element={<DiagnosisLayout />}>
               <Route index element={<Navigate to="assessment" replace />} />
               <Route path="assessment" element={<AssessmentPage />} />
+              <Route path="training-plan" element={<TrainingPlanPage />} />
               <Route path="simulation" element={<SimulationPage />} />
               <Route path="simulation/:recordId/chat" element={<SimulationChatPage />} />
               <Route path="debrief" element={<DebriefCenterPage />} />

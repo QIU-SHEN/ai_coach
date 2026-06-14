@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
 import { getTrainingPlan, type TrainingPlanResult } from '../../api/knowledge';
 import { Play, FileText, Headphones, BookOpen, GraduationCap, CheckCircle2, Loader2 } from 'lucide-react';
@@ -39,6 +40,7 @@ const typeLabel = (type: string) => {
 
 export function TrainingPlanPage() {
   const { currentRecordId, weakPoints } = useAppStore();
+  const navigate = useNavigate();
   const [plan, setPlan] = useState<TrainingPlanResult['data'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -150,6 +152,41 @@ export function TrainingPlanPage() {
                     <p className="text-xs text-gray-500 mt-1">{r.reason}</p>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border p-6">
+            <h3 className="font-bold text-gray-900 mb-4">推荐学习资料</h3>
+            <div className="space-y-3">
+              {plan.recommended_materials && plan.recommended_materials.length > 0 ? (
+                plan.recommended_materials.map((m, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      if (m.material_id) {
+                        navigate(`/employee/learning/material/${m.material_id}`);
+                      }
+                    }}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                      {m.type === 'pdf' ? (
+                        <FileText className="w-4 h-4 text-blue-600" />
+                      ) : m.type === 'video' ? (
+                        <Play className="w-4 h-4 text-red-600" />
+                      ) : (
+                        <BookOpen className="w-4 h-4 text-green-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{m.title}</p>
+                      <p className="text-xs text-gray-500">{m.type === 'pdf' ? 'PDF 文档' : m.type === 'video' ? '视频' : '图文资料'}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-gray-400">暂无推荐资料</p>
               )}
             </div>
           </div>

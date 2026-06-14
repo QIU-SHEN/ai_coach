@@ -109,8 +109,8 @@ export function EmployeeHomePage() {
   }, []);
 
   const quickActions = [
-    { label: '复盘中心', icon: ClipboardList, to: '/employee/debrief', color: 'bg-purple-600' },
-    { label: '学习中心', icon: BookOpen, to: '/employee/learning', color: 'bg-green-600' },
+    { label: '销售能力诊断', icon: ClipboardList, to: '/employee/diagnosis', color: 'bg-purple-600' },
+    { label: '培训资料学习', icon: BookOpen, to: '/employee/learning', color: 'bg-green-600' },
   ];
 
   return (

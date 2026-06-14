@@ -560,8 +560,11 @@ export async function initDb() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
-  // Migration: add product_line to debrief_practice_meta if table already exists without it
-  await pool.execute(`ALTER TABLE debrief_practice_meta ADD COLUMN product_line VARCHAR(100)`).catch(() => { /* column already exists */ });
+  // Migration: add customer options fields for dialogue scenarios
+  await pool.execute(`ALTER TABLE practice_records ADD COLUMN customer_knowledge VARCHAR(20) DEFAULT NULL`).catch(() => { /* column already exists */ });
+  await pool.execute(`ALTER TABLE practice_records ADD COLUMN customer_type VARCHAR(20) DEFAULT NULL`).catch(() => { /* column already exists */ });
+  await pool.execute(`ALTER TABLE debrief_practice_meta ADD COLUMN customer_knowledge VARCHAR(20) DEFAULT NULL`).catch(() => { /* column already exists */ });
+  await pool.execute(`ALTER TABLE debrief_practice_meta ADD COLUMN customer_type VARCHAR(20) DEFAULT NULL`).catch(() => { /* column already exists */ });
 
   // Migrate dialogue_rounds FK from practice_records to debrief_records
   await pool.execute(`ALTER TABLE dialogue_rounds DROP FOREIGN KEY dialogue_rounds_ibfk_1`).catch(() => { /* may not exist */ });

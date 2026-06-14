@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileDown, Loader2, Mic, Clock, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, XCircle, Pencil, Save, X, Trash2, Plus, GraduationCap, BookOpen, Sparkles } from 'lucide-react';
+import { ArrowLeft, FileDown, Loader2, Mic, Clock, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, XCircle, Pencil, Save, X, Trash2, Plus, GraduationCap, BookOpen, Sparkles, FileText, Play } from 'lucide-react';
 import { RadarChartComponent } from '../../components/RadarChart';
 import { useAppStore } from '../../store/useAppStore';
 import { getPracticeDetail, getEvaluation, updateEvaluation, type PracticeDetailResult, type CategoryAnalysis, type EvaluationScores, type ContentIssue, type EvaluationResult } from '../../api/debrief';
@@ -1094,6 +1094,40 @@ export function ReportDetailPage() {
                   </div>
                 </div>
               )}
+
+              {/* Recommended materials */}
+              <div>
+                <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-blue-600" />
+                  推荐学习资料
+                </h4>
+                <div className="space-y-2">
+                  <div
+                    onClick={() => navigate('/employee/learning')}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">产品核心卖点培训手册</p>
+                      <p className="text-xs text-gray-500">PDF 文档</p>
+                    </div>
+                  </div>
+                  <div
+                    onClick={() => navigate('/employee/learning')}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                      <Play className="w-4 h-4 text-red-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">销售话术实战演练视频</p>
+                      <p className="text-xs text-gray-500">视频</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

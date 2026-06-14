@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, BookOpen, Play, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, BookOpen, Play, AlertCircle, X, Download } from 'lucide-react';
 import { getProductLines, getProductAssets, type ProductLine, type ProductAsset } from '../../api/knowledge';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+
 function getFileUrl(a: ProductAsset) {
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
   return `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
 }
 
@@ -15,6 +16,7 @@ export function ProductDocsPage() {
   const [assets, setAssets] = useState<ProductAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<ProductAsset | null>(null);
 
   useEffect(() => {
     if (!productLineId) return;
@@ -48,6 +50,13 @@ export function ProductDocsPage() {
       })
       .finally(() => setLoading(false));
   }, [productLineId]);
+
+  const isPdf = (a: ProductAsset) =>
+    a.file_path.toLowerCase().endsWith('.pdf');
+
+  const isVideo = (a: ProductAsset) =>
+    a.file_path.toLowerCase().endsWith('.mp4') ||
+    a.file_path.toLowerCase().endsWith('.webm');
 
   if (loading) {
     return (
@@ -87,11 +96,11 @@ export function ProductDocsPage() {
             {assets.map((a) => (
               <div
                 key={a.asset_id}
-                onClick={() => window.open(getFileUrl(a), '_blank')}
+                onClick={() => setPreviewAsset(a)}
                 className="bg-white rounded-xl border p-4 flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
               >
                 <div className="w-12 h-12 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
-                  {a.file_path.toLowerCase().endsWith('.mp4') ? (
+                  {isVideo(a) ? (
                     <Play className="w-6 h-6 text-red-500" />
                   ) : (
                     <BookOpen className="w-6 h-6 text-blue-500" />
@@ -100,11 +109,11 @@ export function ProductDocsPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {a.file_path.toLowerCase().endsWith('.mp4') ? '视频' : 'PDF 文档'}
+                    {isVideo(a) ? '视频' : 'PDF 文档'}
                   </p>
                 </div>
                 <span className="text-xs text-blue-600 font-medium shrink-0">
-                  {a.file_path.toLowerCase().endsWith('.mp4') ? '点击播放' : '点击下载'}
+                  {isVideo(a) ? '点击播放' : '点击预览'}
                 </span>
               </div>
             ))}
@@ -116,6 +125,55 @@ export function ProductDocsPage() {
           </div>
         )}
       </div>
+
+      {/* Preview Modal */}
+      {previewAsset && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col">
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-900">
+            <p className="text-white text-sm truncate max-w-[70%]">
+              {previewAsset.title}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(getFileUrl(previewAsset), '_blank');
+                }}
+                className="text-white hover:text-gray-300 p-2"
+                title="新窗口打开"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setPreviewAsset(null)}
+                className="text-white hover:text-gray-300 p-2"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+            {isPdf(previewAsset) ? (
+              <embed
+                src={getFileUrl(previewAsset)}
+                type="application/pdf"
+                className="w-full max-w-5xl h-full border-0 rounded-lg bg-white"
+              />
+            ) : isVideo(previewAsset) ? (
+              <video
+                controls
+                src={getFileUrl(previewAsset)}
+                className="w-full max-w-5xl max-h-full rounded-lg"
+              />
+            ) : (
+              <div className="text-white">不支持的文件类型</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

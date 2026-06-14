@@ -282,8 +282,9 @@ function ConversationSection({ recordId, onComplete, historyRounds }: {
           },
         ]);
       }
-    } catch {
-      setFinished(true);
+    } catch (err: any) {
+      // 不自动结束对话，只显示错误，让用户重试
+      setError(err.message || '获取下一轮对话失败，请重试');
     }
   };
 

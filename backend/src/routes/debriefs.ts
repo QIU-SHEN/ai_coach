@@ -148,12 +148,57 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
   }
 
   // === call_recording 模式：复用原 practices upload 流程 ===
+  // 新增支持：直接传入对话文本（transcript），不需要音频文件
+  const transcript = req.body.transcript as string | undefined;
   const file = req.file;
   const pType = (practice_type as string) || 'intro';
   const aType = (audio_type as string) || 'monologue';
   const pLineName = product_line as string | undefined;
   const pLineId = product_line_id as string | undefined;
 
+  // 如果提供了对话文本，直接保存，不需要音频文件
+  if (transcript && transcript.trim()) {
+    if (!pLineName && !pLineId) {
+      return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 product_line' } as ApiResponse);
+    }
+
+    try {
+      const recordId = uuidv4();
+      const resolvedProductLineId = await resolveProductLineId(pLineName, product_line_id);
+
+      await pool.execute(
+        `INSERT INTO debrief_records (record_id, user_id, product_line_id, title, content, audio_path, transcript, status, debrief_mode, speaker_diagram)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
+        [recordId, userId, resolvedProductLineId, title || `${pLineName} 对话练习`, content || null, null, transcript.trim(), debriefMode, null]
+      );
+      await pool.execute(
+        `INSERT INTO debrief_practice_meta (record_id, duration, practice_type, audio_type, product_line)
+         VALUES (?, ?, ?, ?, ?)`,
+        [recordId, 0, pType, aType, pLineName || null]
+      );
+
+      // 触发后台分析
+      runBackgroundAnalysis(recordId).catch(err => {
+        console.error('Background analysis failed:', recordId, err);
+      });
+
+      return res.status(201).json({
+        code: 0,
+        data: {
+          record_id: recordId,
+          status: 'completed',
+          product_line: pLineName,
+          practice_type: pType,
+          audio_type: aType,
+        },
+      } as ApiResponse);
+    } catch (err) {
+      console.error('Debrief create error (text):', err);
+      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+    }
+  }
+
+  // 原有音频文件处理流程
   if (!file) {
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: ERR_MISSING_PARAMS.message } as ApiResponse);
   }
@@ -346,12 +391,60 @@ function parseJsonField(value: unknown): unknown {
   return value;
 }
 
+// GET /debriefs/simulation-list — 获取模拟对话列表
+router.get('/simulation-list', authMiddleware, async (req: AuthRequest, res) => {
+  const user = req.user!;
+  try {
+    let where = 'WHERE dr.debrief_mode = ?';
+    const params: any[] = ['simulation'];
+
+    if (user.role === 'employee') {
+      where += ' AND dr.user_id = ?';
+      params.push(user.userId);
+    } else if (user.role === 'manager') {
+      where += ' AND (dr.user_id = ? OR u.manager_id = ?)';
+      params.push(user.userId, user.userId);
+    }
+
+    const rows = await query(
+      `SELECT dr.record_id, dr.user_id, dr.title, dr.status, dr.created_at,
+              m.overall_score as meta_score,
+              pl.name as product_line,
+              u.name as user_name
+       FROM debrief_records dr
+       LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
+       LEFT JOIN product_lines pl ON dr.product_line_id = pl.product_line_id
+       LEFT JOIN users u ON dr.user_id = u.user_id
+       ${where}
+       ORDER BY dr.created_at DESC`,
+      params
+    );
+
+    const list = rows.map((row: any) => ({
+      record_id: row.record_id,
+      title: row.title,
+      status: row.status,
+      product_line: row.product_line || undefined,
+      overall_score: row.meta_score != null ? Number(row.meta_score) : undefined,
+      created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
+    }));
+
+    res.json({
+      code: 0,
+      data: { list },
+    } as ApiResponse);
+  } catch (err) {
+    console.error('Simulation list error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
 // GET /debriefs/:id — 获取复盘详情
 router.get('/:id', authMiddleware, async (req: AuthRequest, res, next) => {
   const user = req.user!;
   const { id } = req.params;
 
-  const reservedKeywords = ['team', 'showcase', 'summary', 'training-plan'];
+  const reservedKeywords = ['team', 'showcase', 'summary', 'training-plan', 'simulation-list'];
   if (reservedKeywords.includes(id)) {
     return next();
   }
@@ -1057,6 +1150,27 @@ router.post('/:id/finish-dialogue', authMiddleware, requireDebriefOwnerOrManager
   }
 });
 
+// POST /debriefs/:id/save-reply — 保存回复（不评分）
+router.post('/:id/save-reply', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+  const { round_number, reply } = req.body as { round_number: number; reply: string };
+
+  if (!round_number || !reply) {
+    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 round_number 或 reply' } as ApiResponse);
+  }
+
+  try {
+    await pool.execute(
+      'UPDATE dialogue_rounds SET sales_reply = ? WHERE record_id = ? AND round_number = ?',
+      [reply, id, round_number]
+    );
+    res.json({ code: 0 } as ApiResponse);
+  } catch (err) {
+    console.error('Save reply error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
 async function runBackgroundAnalysis(recordId: string) {
   const recordRows = await query(
     `SELECT dr.record_id, dr.transcript, m.product_line, m.fluency_score, m.duration, m.transcript_segments, m.audio_type
@@ -1142,6 +1256,27 @@ async function runBackgroundAnalysis(recordId: string) {
     if (jsonMatch) trainingPlan = JSON.parse(jsonMatch[0]);
   } catch (err) {
     console.error('Training plan generation failed:', err);
+  }
+
+  // 5. Query real training materials and merge into training plan
+  if (trainingPlan) {
+    try {
+      const materialRows = await query(
+        `SELECT material_id, title, type, duration, file_url, description
+         FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
+      );
+      trainingPlan.recommended_materials = materialRows.map((m: any) => ({
+        material_id: m.material_id,
+        title: m.title,
+        type: m.type,
+        duration: m.duration || '',
+        file_url: m.file_url || '',
+        description: m.description || '',
+      }));
+    } catch (err) {
+      console.error('Query training materials failed:', err);
+      trainingPlan.recommended_materials = [];
+    }
   }
 
   const evalOverallScore = evaluation.overallScore ?? null;

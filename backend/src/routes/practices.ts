@@ -62,7 +62,7 @@ async function requireRecordOwnerOrManager(req: AuthRequest, res: Response, next
 }
 
 // Training plan cache (refreshed daily)
-let trainingPlanCache: { date: string; data: unknown } | null = null;
+let trainingPlanCache: any = null;
 
 router.get('/', authMiddleware, async (req: AuthRequest, res) => {
   const queryUserId = getQueryUserId(req);
@@ -176,6 +176,8 @@ router.post('/upload', authMiddleware, upload.single('audio'), async (req: AuthR
   const productLine = req.body.product_line as string | undefined;
   const practiceType = (req.body.practice_type as string) || 'intro';
   const audioType = (req.body.audio_type as string) || 'monologue';
+  const customerKnowledge = (req.body.customer_knowledge as string) || 'unknown';
+  const customerType = (req.body.customer_type as string) || 'new';
 
   if (!file) {
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: ERR_MISSING_PARAMS.message } as ApiResponse);
@@ -236,8 +238,8 @@ router.post('/upload', authMiddleware, upload.single('audio'), async (req: AuthR
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
 
     await pool.execute(
-      'INSERT INTO practice_records (record_id, user_id, audio_path, duration, product_line, practice_type, audio_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [recordId, userId, savedPath, duration, productLine, practiceType, audioType]
+      'INSERT INTO practice_records (record_id, user_id, audio_path, duration, product_line, practice_type, audio_type, customer_knowledge, customer_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [recordId, userId, savedPath, duration, productLine, practiceType, audioType, customerKnowledge, customerType]
     );
 
     return res.status(201).json({
@@ -250,6 +252,8 @@ router.post('/upload', authMiddleware, upload.single('audio'), async (req: AuthR
         product_line: productLine,
         practice_type: practiceType,
         audio_type: audioType,
+        customer_knowledge: customerKnowledge,
+        customer_type: customerType,
       },
     } as unknown as UploadResponse);
   } catch (err) {
@@ -603,7 +607,7 @@ router.post('/:record_id/dialogue', authMiddleware, requireRecordOwnerOrManager,
 
   try {
     const recordRows = await query(
-      'SELECT record_id, product_line, status FROM practice_records WHERE record_id = ?',
+      'SELECT record_id, product_line, status, customer_knowledge, customer_type FROM practice_records WHERE record_id = ?',
       [record_id]
     );
     const record = recordRows[0];
@@ -685,6 +689,8 @@ router.post('/:record_id/dialogue', authMiddleware, requireRecordOwnerOrManager,
       difficulty,
       productLine: record.product_line,
       knowledgeContext: selectedPoints.join('\n'),
+      customerKnowledge: record.customer_knowledge,
+      customerType: record.customer_type,
     });
 
     // Check for existing round (avoid duplicate on page refresh)
@@ -1003,6 +1009,27 @@ async function runBackgroundAnalysis(recordId: string) {
     console.error('Training plan generation failed:', err);
   }
 
+  // 4.5 Query real training materials and merge into training plan
+  if (trainingPlan) {
+    try {
+      const materialRows = await query(
+        `SELECT material_id, title, type, duration, file_url, description
+         FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
+      );
+      trainingPlan.recommended_materials = materialRows.map((m: any) => ({
+        material_id: m.material_id,
+        title: m.title,
+        type: m.type,
+        duration: m.duration || '',
+        file_url: m.file_url || '',
+        description: m.description || '',
+      }));
+    } catch (err) {
+      console.error('Query training materials failed:', err);
+      trainingPlan.recommended_materials = [];
+    }
+  }
+
   // 5. Save everything
   const evalOverallScore = evaluation.overallScore ?? null;
   const fullEvaluation = {
@@ -1210,8 +1237,26 @@ router.get('/training-plan', authMiddleware, async (req: AuthRequest, res) => {
     const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
     const planData = JSON.parse(jsonStr);
 
-    trainingPlanCache = { date: today, data: planData };
-    res.json({ code: 0, data: planData } as ApiResponse);
+    // 查询真实的培训资料
+    const materialRows = await query(
+      `SELECT material_id, title, type, duration, file_url, description, product_line_id
+       FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
+    );
+    const recommendedMaterials = materialRows.map((m: any) => ({
+      material_id: m.material_id,
+      title: m.title,
+      type: m.type,
+      duration: m.duration || '',
+      description: m.description || '',
+    }));
+
+    res.json({
+      code: 0,
+      data: {
+        ...planData,
+        recommended_materials: recommendedMaterials,
+      },
+    } as ApiResponse);
   } catch (err) {
     console.error('Training plan AI error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
@@ -1307,9 +1352,25 @@ ${summaryText}
     const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
     const planData = JSON.parse(jsonStr);
 
+    // 查询真实的培训资料
+    const materialRows = await query(
+      `SELECT material_id, title, type, duration, file_url, description, product_line_id
+       FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
+    );
+    const recommendedMaterials = materialRows.map((m: any) => ({
+      material_id: m.material_id,
+      title: m.title,
+      type: m.type,
+      duration: m.duration || '',
+      description: m.description || '',
+    }));
+
     res.json({
       code: 0,
-      data: planData,
+      data: {
+        ...planData,
+        recommended_materials: recommendedMaterials,
+      },
     } as ApiResponse);
   } catch (err) {
     console.error('Training plan error:', err);

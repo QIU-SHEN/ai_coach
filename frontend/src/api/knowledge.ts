@@ -135,6 +135,13 @@ export interface TrainingPlanResult {
       topic: string;
       reason: string;
     }>;
+    recommended_materials: Array<{
+      material_id: string;
+      title: string;
+      type: string;
+      duration: string;
+      description: string;
+    }>;
   };
 }
 

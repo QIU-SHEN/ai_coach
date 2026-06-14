@@ -87,6 +87,8 @@ export function SimulationPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('observing');
   const [productLineId, setProductLineId] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [customerKnowledge, setCustomerKnowledge] = useState<'known' | 'unknown' | 'partial'>('unknown');
+  const [customerType, setCustomerType] = useState<'new' | 'existing' | 'returning'>('new');
   const [simulationName] = useState('');
   const [starting, setStarting] = useState(false);
 
@@ -94,7 +96,6 @@ export function SimulationPage() {
     if (starting) return;
     setStarting(true);
     try {
-      // 创建一个模拟对话记录
       const roleName = customerRoles.find(r => r.id === selectedRole)?.name || '客户';
       const statusName = purchaseStatuses.find(s => s.id === selectedStatus)?.name || '';
       const title = simulationName.trim() || `情景模拟：${roleName}（${statusName}）`;
@@ -107,6 +108,8 @@ export function SimulationPage() {
             status: selectedStatus,
             difficulty,
             productLineId,
+            customerKnowledge,
+            customerType,
           },
         });
       } else {
@@ -121,7 +124,7 @@ export function SimulationPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      {/* 角色选择 */}
+      {/* ── 角色选择 ── */}
       <section>
         <h2 className="text-lg font-bold text-gray-900 mb-4">选择客户角色</h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -143,7 +146,7 @@ export function SimulationPage() {
         </div>
       </section>
 
-      {/* 场景配置 */}
+      {/* ── 采购状态 ── */}
       <section>
         <h2 className="text-lg font-bold text-gray-900 mb-4">设置采购状态</h2>
         <div className="grid grid-cols-3 gap-4">
@@ -165,7 +168,58 @@ export function SimulationPage() {
         </div>
       </section>
 
-      {/* 其他配置 */}
+      {/* ── 客户画像 ── */}
+      <section>
+        <h2 className="text-lg font-bold text-gray-900 mb-4">客户画像</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <label className="block text-sm font-medium text-gray-700 mb-3">是否了解净水器</label>
+            <div className="flex gap-2">
+              {[
+                { id: 'known', label: '了解' },
+                { id: 'partial', label: '部分了解' },
+                { id: 'unknown', label: '不了解' },
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => setCustomerKnowledge(option.id as typeof customerKnowledge)}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                    customerKnowledge === option.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </Card>
+          <Card className="p-5">
+            <label className="block text-sm font-medium text-gray-700 mb-3">客户类型</label>
+            <div className="flex gap-2">
+              {[
+                { id: 'new', label: '新增客户' },
+                { id: 'existing', label: '存量客户' },
+                { id: 'returning', label: '回流客户' },
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => setCustomerType(option.id as typeof customerType)}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                    customerType === option.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      {/* ── 其他配置 + 开始按钮 ── */}
       <Card className="p-6">
         <div className="grid md:grid-cols-3 gap-6">
           <div>

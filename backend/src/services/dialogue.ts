@@ -24,6 +24,10 @@ export interface SimulationInput {
   previousRoundScore?: number;
   transcript?: string;
   currentFocus?: string;
+
+  // 客户画像
+  customerKnowledge?: string;
+  customerType?: string;
 }
 
 export interface SimulationResult {
@@ -34,6 +38,9 @@ export interface SimulationResult {
 }
 
 const SYSTEM_PROMPT = `你是一位挑剔、难缠的真实客户，正在考察净水器销售人员。
+
+【客户画像】
+{CUSTOMER_PROFILE}
 
 【当前角色与心态】
 {ROLE}
@@ -72,6 +79,29 @@ const SYSTEM_PROMPT = `你是一位挑剔、难缠的真实客户，正在考察
 async function generateCustomerQuestion(
   input: SimulationInput
 ): Promise<DialogueResult & { isConvinced?: boolean }> {
+  // 客户画像
+  let customerProfile = '';
+  if (input.customerKnowledge || input.customerType) {
+    const knowledgeDesc: Record<string, string> = {
+      known: '你对净水器有较深的了解，知道滤芯、TDS值、RO反渗透等专业术语，不容易被忽悠。',
+      unknown: '你对净水器完全不了解，需要销售从基础概念讲起，容易被专业术语绕晕。',
+      partial: '你听说过净水器，但不太了解技术细节，处于一知半解的状态。',
+    };
+    const typeDesc: Record<string, string> = {
+      new: '你是第一次了解这个品牌，没有任何历史购买记录，没有任何信任基础。',
+      existing: '你已经用过这个品牌的其他产品，对其有一定信任度，但还在犹豫是否升级。',
+      returning: '你之前咨询过但没买，现在重新考虑，对之前的价格或服务有些顾虑。',
+    };
+    const parts: string[] = [];
+    if (input.customerKnowledge) {
+      parts.push(knowledgeDesc[input.customerKnowledge] || '');
+    }
+    if (input.customerType) {
+      parts.push(typeDesc[input.customerType] || '');
+    }
+    customerProfile = parts.join('\n');
+  }
+
   // 角色设定
   let rolePrompt = '你是普通消费者，没有特殊身份设定。';
   if (input.role) {
@@ -125,6 +155,7 @@ async function generateCustomerQuestion(
   const productMaterialText = input.productMaterialText || input.knowledgeContext || '暂无产品资料';
 
   const finalPrompt = SYSTEM_PROMPT
+    .replace('{CUSTOMER_PROFILE}', customerProfile)
     .replace('{ROLE}', rolePrompt)
     .replace('{STATUS}', statusPrompt)
     .replace('{PRODUCT_MATERIAL}', productMaterialText)
@@ -133,12 +164,33 @@ async function generateCustomerQuestion(
 
   const text = await callOpenAIResponses(finalPrompt, '请生成客户回应');
 
-  const result = extractJson<{
+  let result: {
     customerQuestion: string;
     difficulty: 'easy' | 'medium' | 'hard';
     expectedFocus: string;
     is_convinced?: boolean;
-  }>(text);
+  };
+
+  try {
+    result = extractJson<typeof result>(text);
+  } catch (parseErr) {
+    console.error('[Dialogue] JSON parse failed, raw text:', text, 'error:', parseErr);
+    // Fallback: return a default question to keep conversation going
+    const fallbackQuestions = [
+      '你刚才说的我不太满意，能再详细说说吗？',
+      '这个产品的价格有点高，有没有优惠？',
+      '我再考虑一下，你给我点时间。',
+      '你说的这个和其他品牌有什么不同？',
+      '我要和家人商量一下，晚点给你答复。',
+    ];
+    const randomQ = fallbackQuestions[Math.floor(Math.random() * fallbackQuestions.length)];
+    result = {
+      customerQuestion: randomQ,
+      difficulty: input.difficulty,
+      expectedFocus: '继续沟通',
+      is_convinced: false,
+    };
+  }
 
   return {
     customerQuestion: result.customerQuestion,

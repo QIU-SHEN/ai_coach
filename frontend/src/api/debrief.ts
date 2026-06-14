@@ -82,6 +82,14 @@ export interface DebriefAnalysis {
 export interface DebriefTrainingPlan {
   weekly: Array<{ day: string; title: string; type: string; duration?: string }>;
   recommendations: Array<{ topic: string; reason: string }>;
+  recommended_materials?: Array<{
+    material_id: string;
+    title: string;
+    type: string;
+    duration?: string;
+    file_url?: string;
+    description?: string;
+  }>;
 }
 
 export interface DebriefSummary {
@@ -192,6 +200,8 @@ export function uploadAudio(
   practiceType: string = 'intro',
   onProgress?: (percent: number) => void,
   title?: string,
+  customerKnowledge?: string,
+  customerType?: string,
 ): Promise<UploadResult> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -201,6 +211,12 @@ export function uploadAudio(
     formData.append('practice_type', practiceType);
     if (title) {
       formData.append('title', title);
+    }
+    if (customerKnowledge) {
+      formData.append('customer_knowledge', customerKnowledge);
+    }
+    if (customerType) {
+      formData.append('customer_type', customerType);
     }
 
     formData.append('mode', 'call_recording');
@@ -274,6 +290,7 @@ export async function retryAsr(recordId: string): Promise<{ code: number; messag
 
 export interface PracticeRecordItem {
   record_id: string;
+  title?: string;
   product_line: string;
   practice_type: string;
   status: 'pending' | 'processing' | 'analyzing' | 'completed' | 'failed';
@@ -292,6 +309,14 @@ export interface PracticeListResult {
     list: PracticeRecordItem[];
     total: number;
   };
+}
+
+export async function getSimulationList(): Promise<{ code: number; data: { list: PracticeRecordItem[] } }> {
+  const res = await fetch(`${API_BASE}/api/v1/debriefs/simulation-list`, {
+    headers: { ...authHeaders() },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as { code: number; data: { list: PracticeRecordItem[] } };
 }
 
 export async function getPracticeList(_userId?: string): Promise<PracticeListResult> {
@@ -759,11 +784,21 @@ export interface TrainingPlanAssessment {
   pass_criteria: string;
 }
 
+export interface TrainingPlanMaterial {
+  material_id: string;
+  title: string;
+  type: string;
+  duration?: string;
+  file_url?: string;
+  description?: string;
+}
+
 export interface TrainingPlan {
   weekly: string;
   monthly: TrainingPlanMonthly[];
   analysis: TrainingPlanAnalysis[];
   assessment: TrainingPlanAssessment;
+  recommended_materials?: TrainingPlanMaterial[];
 }
 
 export interface PracticeDetailResult {

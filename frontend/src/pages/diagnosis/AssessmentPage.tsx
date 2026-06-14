@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Mic, UploadCloud } from 'lucide-react';
+import { Loader2, Mic, UploadCloud, MessageSquare, FileAudio } from 'lucide-react';
 import { getDebriefList, uploadAudio, type DebriefRecord } from '../../api/debrief';
 import { ProductLineSelector } from '../../components/ProductLineSelector';
 import { Card } from '../../components/ui/Card';
@@ -88,6 +88,8 @@ function NewAssessmentForm() {
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState('');
+  const [inputMode, setInputMode] = useState<'audio' | 'text'>('audio');
+  const [transcript, setTranscript] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -171,6 +173,44 @@ function NewAssessmentForm() {
     }
   };
 
+  const handleSubmitTranscript = async () => {
+    if (!transcript.trim()) {
+      setError('请输入对话文本');
+      return;
+    }
+    if (!productLineId) {
+      setError('请选择产品线');
+      return;
+    }
+    setAnalyzing(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('title', assessmentName.trim() || '对话文本评估');
+      formData.append('mode', 'call_recording');
+      formData.append('product_line', productLineId);
+      formData.append('transcript', transcript.trim());
+
+      const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:3000'}/api/v1/debriefs`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        body: formData,
+      });
+      const json = await res.json();
+      if (json.code === 0 && json.data?.record_id) {
+        window.location.href = `/employee/debrief/${json.data.record_id}/report`;
+      } else {
+        setError(json.message || '提交失败');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '提交失败');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -184,10 +224,11 @@ function NewAssessmentForm() {
       <Card className="p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-2">新建能力评估</h2>
         <p className="text-sm text-gray-500 mb-6">
-          上传电话录音或录制产品介绍语音，AI 将从多维度评估您的销售能力
+          上传电话录音或输入对话文本，AI 将从多维度评估您的销售能力
         </p>
 
         <div className="space-y-4">
+          {/* 评估名称 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               评估名称
@@ -201,6 +242,7 @@ function NewAssessmentForm() {
             />
           </div>
 
+          {/* 选择产品线 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               选择产品线
@@ -215,93 +257,149 @@ function NewAssessmentForm() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              上传音频文件
-            </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center transition-colors hover:border-blue-500">
-              <UploadCloud className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-600 mb-2">点击上传或拖拽文件到此处</p>
-              <p className="text-xs text-gray-400 mb-4">支持 mp3, wav, m4a, webm · 最大100MB</p>
-              <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 cursor-pointer transition-colors">
-                <UploadCloud className="w-4 h-4" />
-                选择文件
-                <input type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
+          {/* 输入方式切换 */}
+          <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+            <button
+              onClick={() => setInputMode('audio')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                inputMode === 'audio'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <FileAudio className="w-4 h-4" />
+              上传音频
+            </button>
+            <button
+              onClick={() => setInputMode('text')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                inputMode === 'text'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              输入对话文本
+            </button>
+          </div>
+
+          {inputMode === 'audio' ? (
+            /* 音频上传区域 */
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                上传音频文件
               </label>
-            </div>
-          </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center transition-colors hover:border-blue-500">
+                <UploadCloud className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                <p className="text-sm text-gray-600 mb-2">点击上传或拖拽文件到此处</p>
+                <p className="text-xs text-gray-400 mb-4">支持 mp3, wav, m4a, webm · 最大100MB</p>
+                <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 cursor-pointer transition-colors">
+                  <UploadCloud className="w-4 h-4" />
+                  选择文件
+                  <input type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
+                </label>
+              </div>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-400">或</span>
-            </div>
-          </div>
+              {error && (
+                <div className="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm text-center">{error}</div>
+              )}
 
-          {error && (
-            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm text-center">{error}</div>
-          )}
+              <div className="mt-4">
+                {!isRecording && !recordedBlob && (
+                  <button
+                    onClick={startRecording}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    <Mic className="w-5 h-5 text-red-500" />
+                    开始录音
+                  </button>
+                )}
 
-          <div>
-            {!isRecording && !recordedBlob && (
+                {isRecording && (
+                  <div className="flex flex-col items-center gap-3 p-4 border rounded-lg bg-red-50 border-red-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                      <span className="text-2xl font-mono font-bold text-gray-900">{formatTime(recordSeconds)}</span>
+                    </div>
+                    <button
+                      onClick={stopRecording}
+                      className="px-6 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                    >
+                      结束录音
+                    </button>
+                  </div>
+                )}
+
+                {recordedBlob && (
+                  <div className="p-4 border rounded-lg bg-gray-50 space-y-3">
+                    {recordedUrl && <audio src={recordedUrl} controls className="w-full" />}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setRecordedBlob(null);
+                          setRecordedUrl('');
+                          setRecordSeconds(0);
+                        }}
+                        className="flex-1 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                      >
+                        重新录制
+                      </button>
+                      <button
+                        onClick={handleAnalyze}
+                        disabled={analyzing}
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {analyzing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            上传中...
+                          </>
+                        ) : (
+                          '开始分析'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* 对话文本输入区域 */
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                输入销售与客户的对话文本
+              </label>
+              <textarea
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder="例如：&#x000D;&#x000A;销售：您好，请问您需要了解一下我们的净水器吗？&#x000D;&#x000A;客户：我想先看看...&#x000D;&#x000A;（支持多轮对话文本）"
+                rows={8}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                提示：对话文本越长，AI 评估越准确。建议包含完整的销售流程（开场、探需、产品介绍、异议处理、促单）。
+              </p>
+
+              {error && (
+                <div className="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm text-center">{error}</div>
+              )}
+
               <button
-                onClick={startRecording}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                onClick={handleSubmitTranscript}
+                disabled={analyzing}
+                className="mt-4 w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <Mic className="w-5 h-5 text-red-500" />
-                开始录音
+                {analyzing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    分析中...
+                  </>
+                ) : (
+                  '提交对话并评估'
+                )}
               </button>
-            )}
-
-            {isRecording && (
-              <div className="flex flex-col items-center gap-3 p-4 border rounded-lg bg-red-50 border-red-200">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-2xl font-mono font-bold text-gray-900">{formatTime(recordSeconds)}</span>
-                </div>
-                <button
-                  onClick={stopRecording}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
-                >
-                  结束录音
-                </button>
-              </div>
-            )}
-
-            {recordedBlob && (
-              <div className="p-4 border rounded-lg bg-gray-50 space-y-3">
-                {recordedUrl && <audio src={recordedUrl} controls className="w-full" />}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setRecordedBlob(null);
-                      setRecordedUrl('');
-                      setRecordSeconds(0);
-                    }}
-                    className="flex-1 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
-                  >
-                    重新录制
-                  </button>
-                  <button
-                    onClick={handleAnalyze}
-                    disabled={analyzing}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {analyzing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        上传中...
-                      </>
-                    ) : (
-                      '开始分析'
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </Card>
     </div>

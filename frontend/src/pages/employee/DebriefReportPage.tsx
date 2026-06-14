@@ -348,6 +348,37 @@ export function DebriefReportPage() {
                     ))}
                   </div>
                 )}
+
+                {/* Recommended Materials */}
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm font-medium text-gray-700 mb-3">推荐学习资料</p>
+                  <div className="space-y-2">
+                    <div
+                      onClick={() => navigate('/employee/learning')}
+                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">产品核心卖点培训手册</p>
+                        <p className="text-xs text-gray-500">PDF 文档</p>
+                      </div>
+                    </div>
+                    <div
+                      onClick={() => navigate('/employee/learning')}
+                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-4 h-4 text-red-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">销售话术实战演练视频</p>
+                        <p className="text-xs text-gray-500">视频</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </>
