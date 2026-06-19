@@ -1,4 +1,13 @@
+import { Suspense } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-sm text-gray-400">加载中...</div>
+    </div>
+  );
+}
 import { Navbar } from '../components/Navbar';
 
 export function AdminLayout() {
@@ -36,7 +45,9 @@ export function AdminLayout() {
             ))}
           </div>
         )}
-        <Outlet />
+        <Suspense fallback={<PageLoader />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

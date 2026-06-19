@@ -1,7 +1,16 @@
+import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { EmployeeSidebar, employeeMenu } from '../components/EmployeeSidebar';
 import { MobileBottomNav } from '../components/MobileBottomNav';
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-sm text-gray-400">加载中...</div>
+    </div>
+  );
+}
 
 export function EmployeeLayout() {
   const location = useLocation();
@@ -19,7 +28,9 @@ export function EmployeeLayout() {
           </div>
         )}
         <main className="flex-1 min-w-0">
-          <Outlet />
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       <div className="no-print">
