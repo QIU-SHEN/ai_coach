@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Image, FileText } from 'lucide-react';
 import { getProductLines, type ProductLine } from '../../api/knowledge';
+import { API_BASE } from '../../api/config';
 
 export function ProductOverviewPage() {
   const { productLineId } = useParams<{ productLineId: string }>();
@@ -25,7 +26,6 @@ export function ProductOverviewPage() {
 
   function getCoverUrl() {
     if (!product?.cover_image_asset_id) return null;
-    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
     return `${API_BASE}/api/v1/product-assets/${product.cover_image_asset_id}/file`;
   }
 

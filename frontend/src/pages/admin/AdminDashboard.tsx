@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit2, Trash2, X, ImageIcon, FileText, Film, Package, Image, BookOpen, Sparkles, Loader2, Eye, Upload, CheckSquare, Square, Settings2, Mic, MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { register, getUserList, resetUserPassword, batchAssignManager, type UserListItem, type RegisterInput } from '../../api/auth';
 import { getSettings, updateSettings } from '../../api/settings';
+import { API_BASE } from '../../api/config';
 import { ProductLineSelector } from '../../components/ProductLineSelector';
 import {
   getProductLines,
@@ -1458,7 +1459,6 @@ export function ProductAssetsTab() {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
   const getFileUrl = (a: ProductAsset) => `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
   const isImageType = (a: ProductAsset) => /\.(jpe?g|png|webp|gif)$/i.test(a.file_path);
 

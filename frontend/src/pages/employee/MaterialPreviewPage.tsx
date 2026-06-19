@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Download, Headphones, Play, FileText, Loader2 } from 'lucide-react';
 import { getMaterialById, type MaterialItem } from '../../api/knowledge';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { API_BASE } from '../../api/config';
 
 export function MaterialPreviewPage() {
   const { materialId } = useParams<{ materialId: string }>();

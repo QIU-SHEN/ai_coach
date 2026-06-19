@@ -6,8 +6,7 @@ import { BookOpen, ClipboardList, Calendar, Clock, ArrowRight, Headphones, X, Pl
 import { Card } from '../../components/ui/Card';
 import { ScoreBadge } from '../../components/ui/ScoreBadge';
 import { Button } from '../../components/ui/Button';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { API_BASE } from '../../api/config';
 
 function formatDate(iso: string) {
   const d = new Date(iso);

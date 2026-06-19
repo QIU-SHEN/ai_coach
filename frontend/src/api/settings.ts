@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { API_BASE } from './config';
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');

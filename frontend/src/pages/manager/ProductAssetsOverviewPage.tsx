@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Image, FileText, Edit3, X, Check } from 'lucide-react';
 import { getProductLines, getProductAssets, setProductCoverImage, type ProductLine, type ProductAsset } from '../../api/knowledge';
+import { API_BASE } from '../../api/config';
 
 export function ProductAssetsOverviewPage() {
   const { productLineId } = useParams<{ productLineId: string }>();
@@ -63,7 +64,6 @@ export function ProductAssetsOverviewPage() {
 
   function getCoverUrl() {
     if (!product?.cover_image_asset_id) return null;
-    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
     return `${API_BASE}/api/v1/product-assets/${product.cover_image_asset_id}/file`;
   }
 
@@ -165,7 +165,6 @@ export function ProductAssetsOverviewPage() {
                   ) : (
                     <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1">
                       {assets.map((a) => {
-                        const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
                         const url = `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
                         const isSelected = a.asset_id === product.cover_image_asset_id;
                         return (

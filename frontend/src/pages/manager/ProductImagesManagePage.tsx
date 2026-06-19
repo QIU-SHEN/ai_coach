@@ -10,6 +10,7 @@ import {
   type ProductLine,
   type ProductAsset,
 } from '../../api/knowledge';
+import { API_BASE } from '../../api/config';
 
 const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
@@ -18,7 +19,6 @@ function isImagePath(path: string) {
 }
 
 function getFileUrl(a: ProductAsset) {
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
   return `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
 }
 

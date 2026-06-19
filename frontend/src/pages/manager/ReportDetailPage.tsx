@@ -4,8 +4,7 @@ import { ArrowLeft, FileDown, Loader2, Mic, Clock, AlertTriangle, ChevronDown, C
 import { RadarChartComponent } from '../../components/RadarChart';
 import { useAppStore } from '../../store/useAppStore';
 import { getPracticeDetail, getEvaluation, updateEvaluation, type PracticeDetailResult, type CategoryAnalysis, type EvaluationScores, type ContentIssue, type EvaluationResult } from '../../api/debrief';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { API_BASE } from '../../api/config';
 
 function resolveAudioUrl(url: string) {
   if (!url) return '';

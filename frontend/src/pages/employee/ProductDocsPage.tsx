@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, BookOpen, Play, AlertCircle, X, Download } from 'lucide-react';
 import { getProductLines, getProductAssets, type ProductLine, type ProductAsset } from '../../api/knowledge';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { API_BASE } from '../../api/config';
 
 function getFileUrl(a: ProductAsset) {
   return `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;

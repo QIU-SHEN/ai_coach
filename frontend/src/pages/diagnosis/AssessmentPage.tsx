@@ -5,6 +5,7 @@ import { getDebriefList, uploadAudio, type DebriefRecord } from '../../api/debri
 import { ProductLineSelector } from '../../components/ProductLineSelector';
 import { Card } from '../../components/ui/Card';
 import { ScoreBadge } from '../../components/ui/ScoreBadge';
+import { API_BASE } from '../../api/config';
 
 export function AssessmentPage() {
   const navigate = useNavigate();
@@ -191,7 +192,7 @@ function NewAssessmentForm() {
       formData.append('product_line', productLineId);
       formData.append('transcript', transcript.trim());
 
-      const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:3000'}/api/v1/debriefs`, {
+      const res = await fetch(`${API_BASE}/api/v1/debriefs`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
