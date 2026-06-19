@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, ClipboardList, Loader2, ChevronRight, BarChart3, MessageSquare, PhoneCall, Headphones } from 'lucide-react';
 import { getDebriefList, type DebriefRecord } from '../../api/debrief';
-import { getProductLines, type ProductLine } from '../../api/knowledge';
+import { getProductLines } from '../../api/knowledge';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { useAsync } from '../../hooks/useAsync';
 
 function ModeBadge({ mode }: { mode?: string }) {
   if (mode === 'call_recording') {
@@ -74,23 +74,18 @@ function DebriefCard({ record, productLineName, onClick }: {
 
 export function DebriefListPage() {
   const navigate = useNavigate();
-  const [records, setRecords] = useState<DebriefRecord[]>([]);
-  const [productLines, setProductLines] = useState<ProductLine[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      getDebriefList(),
-      getProductLines(),
-    ])
-      .then(([debriefRes, plRes]) => {
-        if (debriefRes.code === 0 && debriefRes.data) setRecords(debriefRes.data.list);
-        if (plRes.code === 0 && plRes.data) setProductLines(plRes.data.list);
-      })
-      .catch(() => setRecords([]))
-      .finally(() => setLoading(false));
+  const { data: rawData, loading, error } = useAsync(async () => {
+    const [debriefRes, plRes] = await Promise.all([getDebriefList(), getProductLines()]);
+    if (debriefRes.code !== 0 || !debriefRes.data) throw new Error('加载失败');
+    return {
+      records: debriefRes.data.list,
+      productLines: plRes.code === 0 && plRes.data ? plRes.data.list : [],
+    };
   }, []);
+
+  const records: DebriefRecord[] = rawData?.records ?? [];
+  const productLines = rawData?.productLines ?? [];
 
   const getProductLineName = (id?: string) => productLines.find((pl) => pl.product_line_id === id)?.name;
 
@@ -116,7 +111,13 @@ export function DebriefListPage() {
         </div>
       )}
 
-      {!loading && records.length === 0 && (
+      {!loading && error && (
+        <Card padding="lg" className="text-center">
+          <p className="text-sm text-red-500">{error}</p>
+        </Card>
+      )}
+
+      {!loading && !error && records.length === 0 && (
         <Card padding="lg" className="text-center">
           <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">还没有复盘记录</h3>
@@ -130,7 +131,7 @@ export function DebriefListPage() {
         </Card>
       )}
 
-      {!loading && records.length > 0 && (
+      {!loading && !error && records.length > 0 && (
         <div className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             {/* 复盘记录 */}

@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { ScoreBadge } from '../../components/ui/ScoreBadge';
 import { Avatar } from '../../components/ui/Avatar';
+import { useAsync } from '../../hooks/useAsync';
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -164,9 +165,6 @@ function RecordCard({ record, onClick, onToggleShowcase }: { record: DebriefReco
 export function TeamListPage() {
   const navigate = useNavigate();
   const { user } = useAppStore();
-  const [records, setRecords] = useState<DebriefRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showPortraitModal, setShowPortraitModal] = useState(false);
@@ -176,18 +174,28 @@ export function TeamListPage() {
   const [showcaseComment, setShowcaseComment] = useState('');
   const [submittingShowcase, setSubmittingShowcase] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
-    setLoading(true);
-    getDebriefList()
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          setRecords(res.data.list);
-        }
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : '加载失败'))
-      .finally(() => setLoading(false));
+  const { data: rawRecords, loading, error } = useAsync(async () => {
+    // Keep loading:true while auth has not hydrated yet — avoid premature empty-state flash.
+    if (!user) return new Promise<DebriefRecord[]>(() => { /* intentionally never resolves; re-run happens when user is set */ });
+    const res = await getDebriefList();
+    if (res.code !== 0 || !res.data) throw new Error('加载失败');
+    return res.data.list;
   }, [user]);
+
+  // Track optimistic showcase toggle overrides: recordId -> is_showcase value.
+  // Cleared automatically when rawRecords updates so fresh server data always wins.
+  const [showcaseOverrides, setShowcaseOverrides] = useState<Map<string, boolean>>(new Map());
+  useEffect(() => {
+    setShowcaseOverrides(new Map());
+  }, [rawRecords]);
+
+  const records = useMemo(() => {
+    const base = rawRecords ?? [];
+    if (showcaseOverrides.size === 0) return base;
+    return base.map((r) =>
+      showcaseOverrides.has(r.record_id) ? { ...r, is_showcase: showcaseOverrides.get(r.record_id) } : r
+    );
+  }, [rawRecords, showcaseOverrides]);
 
   const groups = useMemo(() => groupByEmployee(records), [records]);
 
@@ -259,11 +267,11 @@ export function TeamListPage() {
     try {
       const res = await toggleShowcase(recordId, comment);
       if (res.code === 0) {
-        setRecords((prev) =>
-          prev.map((r) =>
-            r.record_id === recordId ? { ...r, is_showcase: res.data.is_showcase } : r
-          )
-        );
+        setShowcaseOverrides((prev) => {
+          const next = new Map(prev);
+          next.set(recordId, res.data.is_showcase);
+          return next;
+        });
       }
     } catch {
       // ignore

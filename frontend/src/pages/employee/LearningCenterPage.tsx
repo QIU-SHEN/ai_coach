@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { GraduationCap, Package, HelpCircle, Eye, Headphones, Play, FileText } from 'lucide-react';
 import {
   getMaterials,
   getProductLines,
   type MaterialItem,
-  type ProductLine,
 } from '../../api/knowledge';
 import { ProductMaterialsView } from '../../components/ProductMaterialsView';
+import { useAsync } from '../../hooks/useAsync';
 
 type SubTab = 'materials' | 'assets';
 
@@ -28,38 +28,32 @@ export function LearningCenterPage() {
   const navigate = useNavigate();
   const initialTab: SubTab = searchParams.get('tab') === 'assets' ? 'assets' : 'materials';
   const [subTab, setSubTab] = useState<SubTab>(initialTab);
-  // Data
-  const [materialsList, setMaterialsList] = useState<MaterialItem[]>([]);
-  const [productLines, setProductLines] = useState<ProductLine[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Pagination
   const [materialsPage, setMaterialsPage] = useState(1);
   const MATERIALS_PAGE_SIZE = 12;
 
-  useEffect(() => {
-    getProductLines()
-      .then((res) => { if (res.code === 0 && res.data) setProductLines(res.data.list.filter((l) => l.status === 'active')); })
-      .catch(() => {});
+  const { data: rawProductLines } = useAsync(async () => {
+    const res = await getProductLines();
+    if (res.code === 0 && res.data) return res.data.list.filter((l) => l.status === 'active');
+    return [];
   }, []);
+
+  const productLines = rawProductLines ?? [];
+
+  const { data: rawMaterialsList, loading } = useAsync(async () => {
+    const res = await getMaterials({ limit: 100 });
+    if (res.code === 0 && res.data) return res.data.list.filter((m) => m.status === 'active');
+    return [];
+  }, []);
+
+  const materialsList: MaterialItem[] = rawMaterialsList ?? [];
 
   const getLineName = (id?: string) => productLines.find((l) => l.product_line_id === id)?.name || '';
 
   const handlePreview = (m: MaterialItem) => {
     navigate(`/employee/learning/material/${m.material_id}`);
   };
-
-  useEffect(() => {
-    setLoading(true);
-    getMaterials({ limit: 100 })
-      .then((materialsRes) => {
-        if (materialsRes.code === 0 && materialsRes.data) {
-          setMaterialsList(materialsRes.data.list.filter((m) => m.status === 'active'));
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
 
   // const sceneColors: Record<string, string> = {
   //   '开场': 'bg-blue-50 text-blue-700', '异议处理': 'bg-red-50 text-red-700',
