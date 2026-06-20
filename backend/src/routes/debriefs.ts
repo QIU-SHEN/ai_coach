@@ -311,7 +311,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
 
     const rows = await query(
       `SELECT dr.record_id, dr.user_id, dr.title, dr.status, dr.analysis, dr.product_line_id,
-              dr.debrief_mode, dr.created_at, dr.training_plan,
+              dr.debrief_mode, dr.created_at, dr.training_plan, dr.overall_score as debrief_score,
               m.duration, m.practice_type, m.overall_score as meta_score, m.is_showcase,
               m.evaluation_result, m.weak_points,
               pl.name as product_line,
@@ -352,8 +352,9 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
         };
       }
 
-      let overallScore: number | null = null;
-      if (row.analysis) {
+      // Use extracted column first; fall back to JSON parse for records predating this migration
+      let overallScore: number | null = row.debrief_score != null ? Number(row.debrief_score) : null;
+      if (overallScore === null && row.analysis) {
         try {
           const a = typeof row.analysis === 'string' ? JSON.parse(row.analysis) : row.analysis;
           overallScore = a.overallScore ?? a.overall_score ?? null;
@@ -553,10 +554,11 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res) => {
 
     const analysisJson = JSON.stringify(result);
     const trainingPlanJson = JSON.stringify(result.trainingPlan || result.training_plan || {});
+    const overallScore = typeof result.overallScore === 'number' ? result.overallScore : null;
 
     await pool.execute(
-      `UPDATE debrief_records SET analysis = ?, training_plan = ?, status = 'completed' WHERE record_id = ?`,
-      [analysisJson, trainingPlanJson, id]
+      `UPDATE debrief_records SET analysis = ?, training_plan = ?, status = 'completed', overall_score = ? WHERE record_id = ?`,
+      [analysisJson, trainingPlanJson, overallScore, id]
     );
 
     const updated = await query(

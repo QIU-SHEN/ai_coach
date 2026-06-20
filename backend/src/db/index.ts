@@ -580,5 +580,28 @@ export async function initDb() {
     ).catch(() => { /* ignore errors */ });
   }
 
+  // Module 4: extract overall_score from analysis JSON into a dedicated column
+  await pool.execute('ALTER TABLE debrief_records ADD COLUMN overall_score DECIMAL(4,1) DEFAULT NULL').catch(() => {});
+  // Backfill existing post_meeting records that already have analysis JSON
+  await pool.execute(`
+    UPDATE debrief_records
+    SET overall_score = CAST(JSON_UNQUOTE(JSON_EXTRACT(analysis, '$.overallScore')) AS DECIMAL(4,1))
+    WHERE debrief_mode = 'post_meeting' AND analysis IS NOT NULL AND overall_score IS NULL
+      AND JSON_VALID(analysis) AND JSON_EXTRACT(analysis, '$.overallScore') IS NOT NULL
+  `).catch(() => {});
+
+  // Module 4: performance indexes for high-frequency queries
+  const perfIndexMigrations = [
+    'CREATE INDEX idx_debrief_user_created ON debrief_records(user_id, created_at)',
+    'CREATE INDEX idx_debrief_mode_status ON debrief_records(debrief_mode, status)',
+    'CREATE INDEX idx_meta_showcase ON debrief_practice_meta(is_showcase)',
+    'CREATE INDEX idx_assets_pline_status ON product_assets(product_line_id, status)',
+    'CREATE INDEX idx_quizzes_pline_status ON product_quizzes(product_line_id, status)',
+    'CREATE INDEX idx_attempts_user ON quiz_attempts(user_id)',
+  ];
+  for (const sql of perfIndexMigrations) {
+    await pool.execute(sql).catch(() => { /* index already exists */ });
+  }
+
   console.log('Database initialized (MySQL)');
 }
