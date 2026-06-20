@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Sparkles, Loader2, Trash2, AlertCircle, CheckCircle, BookOpen } from 'lucide-react';
 import { getQuizzesByMaterial, generateQuizzesForMaterial, deleteQuiz, type Quiz } from '../../api/quiz';
 import { getMaterialById, type MaterialItem } from '../../api/knowledge';
+import { useConfirm } from '../../hooks/useConfirm';
 
 const difficultyMap = {
   easy: { label: '简单', color: 'bg-green-50 text-green-700' },
@@ -13,6 +14,7 @@ const difficultyMap = {
 export function MaterialQuizManagePage() {
   const { materialId } = useParams<{ materialId: string }>();
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
   const [material, setMaterial] = useState<MaterialItem | null>(null);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ export function MaterialQuizManagePage() {
   }
 
   async function handleGenerate() {
-    if (!confirm('将基于该培训资料AI生成10道练习题，此过程可能需要20-40秒，是否继续？')) return;
+    if (!await confirm({ title: 'AI 生成练习题', message: '将基于该培训资料AI生成10道练习题，此过程可能需要20-40秒，是否继续？', variant: 'warning' })) return;
     setGenerating(true);
     setError('');
     setSuccess('');
@@ -68,7 +70,7 @@ export function MaterialQuizManagePage() {
   }
 
   async function handleDelete(quizId: string) {
-    if (!confirm('确定删除这道题目？')) return;
+    if (!await confirm({ message: '确定删除这道题目？', variant: 'danger' })) return;
     setDeletingId(quizId);
     try {
       const res = await deleteQuiz(quizId);
