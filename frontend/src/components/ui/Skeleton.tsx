@@ -26,11 +26,7 @@ interface SkeletonCircleProps {
 }
 
 export function SkeletonCircle({ size = 'md', className }: SkeletonCircleProps) {
-  return (
-    <div
-      className={clsx('animate-pulse bg-gray-200 rounded-full shrink-0', circleSizeMap[size], className)}
-    />
-  );
+  return <Skeleton className={clsx('rounded-full shrink-0', circleSizeMap[size], className)} />;
 }
 
 interface SkeletonTextProps {

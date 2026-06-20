@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -31,6 +31,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const timer = setTimeout(() => removeToast(id), 3000);
     timers.current.set(id, timer);
   }, [removeToast]);
+
+  // 卸载时清理所有挂起的 timer，避免 HMR/条件渲染场景下的 stale 回调
+  useEffect(() => {
+    const t = timers.current;
+    return () => { t.forEach((timer) => clearTimeout(timer)); };
+  }, []);
 
   return (
     <ToastContext.Provider value={{ addToast }}>

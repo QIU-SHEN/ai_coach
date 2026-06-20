@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, BookOpen, Play, AlertCircle, X, Download } from 'lucide-react';
-import { getProductLines, getProductAssets, getAssetFileUrl, type ProductLine, type ProductAsset } from '../../api/knowledge';
+import { getProductLineById, getProductAssets, getAssetFileUrl, type ProductLine, type ProductAsset } from '../../api/knowledge';
 
 function isPdf(a: ProductAsset) {
   return a.file_path.toLowerCase().endsWith('.pdf');
@@ -48,12 +48,7 @@ export function ProductDocsPage() {
     setError(null);
 
     Promise.all([
-      getProductLines().then((res) => {
-        if (res.code === 0 && res.data) {
-          return res.data.list.find((p) => p.product_line_id === productLineId) || null;
-        }
-        return null;
-      }),
+      getProductLineById(productLineId).then((res) => res.code === 0 ? res.data : null).catch(() => null),
       getProductAssets({
         product_line_id: productLineId,
         limit: 100,

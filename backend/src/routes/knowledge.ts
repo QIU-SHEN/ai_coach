@@ -653,10 +653,7 @@ router.get('/product-assets', authMiddleware, async (req, res) => {
     if (asset_type) {
       // 支持逗号分隔的多值过滤，如 ?asset_type=manual,brochure
       const types = (asset_type as string).split(',').map((t) => t.trim()).filter(Boolean);
-      if (types.length === 1) {
-        params.push(types[0]);
-        where += ' AND asset_type = ?';
-      } else if (types.length > 1) {
+      if (types.length > 0) {
         params.push(...types);
         where += ` AND asset_type IN (${types.map(() => '?').join(', ')})`;
       }

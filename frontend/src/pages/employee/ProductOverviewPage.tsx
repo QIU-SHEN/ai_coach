@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Image, FileText } from 'lucide-react';
-import { getProductLines, type ProductLine } from '../../api/knowledge';
+import { getProductLineById, type ProductLine } from '../../api/knowledge';
 import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 
 export function ProductOverviewPage() {
@@ -13,13 +13,8 @@ export function ProductOverviewPage() {
   useEffect(() => {
     if (!productLineId) return;
     setLoading(true);
-    getProductLines()
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          const found = res.data.list.find((p) => p.product_line_id === productLineId);
-          if (found) setProduct(found);
-        }
-      })
+    getProductLineById(productLineId)
+      .then((res) => { if (res.code === 0) setProduct(res.data); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [productLineId]);

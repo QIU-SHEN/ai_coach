@@ -42,13 +42,15 @@ app.use('/api/v1/knowledge/product-assets/upload', rateLimit({
   message: { code: 429, message: '上传过于频繁，请 1 分钟后再试' },
 }));
 
-// AI 对话接口限流：30 次/分钟（防止暴力调用产生大量费用）
-app.use('/api/v1/debriefs', rateLimit({
+// AI 模拟/对话接口限流：30 次/分钟（防止暴力调用产生大量费用）
+const aiDialogueLimit = rateLimit({
   windowMs: 60_000,
   max: 30,
   message: { code: 429, message: 'AI 请求过于频繁，请稍后重试' },
-  skip: (req) => !req.path.includes('simulation') && !req.path.includes('dialogue'),
-}));
+});
+app.use('/api/v1/debriefs/:id/simulation', aiDialogueLimit);
+app.use('/api/v1/debriefs/:id/dialogue', aiDialogueLimit);
+app.use('/api/v1/debriefs/:id/dialogue-training', aiDialogueLimit);
 
 // Serve local uploaded files (training materials, etc.)
 // 强制内联预览，避免浏览器自动下载
