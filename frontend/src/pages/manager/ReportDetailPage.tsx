@@ -4,6 +4,7 @@ import { ArrowLeft, FileDown, Loader2, Mic, Clock, AlertTriangle, ChevronDown, C
 import { RadarChartComponent } from '../../components/RadarChart';
 import { useAppStore } from '../../store/useAppStore';
 import { getPracticeDetail, getEvaluation, updateEvaluation, type PracticeDetailResult, type CategoryAnalysis, type EvaluationScores, type ContentIssue, type EvaluationResult } from '../../api/debrief';
+import { useToast } from '../../hooks/useToast';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
 
@@ -422,6 +423,7 @@ export function ReportDetailPage() {
   const navigate = useNavigate();
   const { id: recordId } = useParams();
   const { user } = useAppStore();
+  const { toast } = useToast();
   const isEmployee = user?.role === 'employee';
   const [detail, setDetail] = useState<PracticeDetailResult['data'] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -569,7 +571,7 @@ export function ReportDetailPage() {
       } : prev);
       setEditing(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '保存失败');
+      toast.error(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
     }

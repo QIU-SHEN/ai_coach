@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LogOut, UserCircle, Briefcase, Shield, KeyRound, ChevronDown, Mail } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { changePassword, updateEmail } from '../api/auth';
+import { useToast } from '../hooks/useToast';
 
 const roleLabel: Record<string, string> = {
   employee: '销售员工',
@@ -17,6 +18,7 @@ const roleIcon: Record<string, React.ReactNode> = {
 
 export function Navbar() {
   const { user, logout } = useAppStore();
+  const { toast } = useToast();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showPwdModal, setShowPwdModal] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
@@ -51,7 +53,7 @@ export function Navbar() {
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        alert('密码修改成功，请重新登录');
+        toast.success('密码修改成功，请重新登录');
         logout();
         window.location.href = '/login';
       } else {
@@ -78,7 +80,7 @@ export function Navbar() {
       if (res.code === 0) {
         setShowEmailModal(false);
         setEmailValue('');
-        alert('邮箱修改成功');
+        toast.success('邮箱修改成功');
         // 刷新页面以更新 user 状态中的 email（或调用 restoreSession）
         window.location.reload();
       } else {

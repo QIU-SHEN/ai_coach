@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Minus, X } from 'lucide-react';
 import { getProductLinesTree, createProductLine, deleteProductLine, type ProductLine } from '../api/knowledge';
+import { useToast } from '../hooks/useToast';
 
 type CreateMode = 'series' | 'product';
 
@@ -12,6 +13,7 @@ interface ProductMaterialsViewProps {
 
 export function ProductMaterialsView({ basePath = '/employee/learning/product', allowCreateLine = false }: ProductMaterialsViewProps) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [productTree, setProductTree] = useState<ProductLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [path, setPath] = useState<ProductLine[]>([]);
@@ -128,10 +130,10 @@ export function ProductMaterialsView({ basePath = '/employee/learning/product', 
         setDeleteTarget(null);
         loadTree();
       } else {
-        alert(res.message || '删除失败');
+        toast.error(res.message || '删除失败');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     } finally {
       setDeleteLoading(false);
     }

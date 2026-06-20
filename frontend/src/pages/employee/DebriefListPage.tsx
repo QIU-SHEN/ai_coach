@@ -5,6 +5,7 @@ import { getDebriefList, type DebriefRecord } from '../../api/debrief';
 import { getProductLines, type ProductLine } from '../../api/knowledge';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { useToast } from '../../hooks/useToast';
 
 function ModeBadge({ mode }: { mode?: string }) {
   if (mode === 'call_recording') {
@@ -74,6 +75,7 @@ function DebriefCard({ record, productLineName, onClick }: {
 
 export function DebriefListPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [records, setRecords] = useState<DebriefRecord[]>([]);
   const [productLines, setProductLines] = useState<ProductLine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -178,7 +180,7 @@ export function DebriefListPage() {
           </div>
 
           <button
-            onClick={() => alert('汇总分析功能需后端接口支持，开发中...')}
+            onClick={() => toast.info('汇总分析功能需后端接口支持，开发中...')}
             className="w-full bg-white rounded-xl border border-dashed p-5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
           >
             <BarChart3 className="w-5 h-5 text-blue-600" />
