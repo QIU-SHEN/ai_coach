@@ -1,4 +1,5 @@
 import { pool } from '../db';
+import { logger } from './logger';
 
 async function getSetting(key: string): Promise<string | null> {
   const rows: any = await pool.execute('SELECT setting_value FROM settings WHERE setting_key = ?', [key]);
@@ -12,24 +13,14 @@ export async function sendReportNotification(recordId: string): Promise<void> {
   const webhookUrl = await getSetting('wecom_webhook_url');
   if (!webhookUrl) return;
 
-  // Try practice_records first, then debrief_records
-  let [rows]: any = await pool.execute(
-    `SELECT pr.record_id, u.name AS user_name, u.employee_id, pr.product_line, pr.duration, pr.evaluation_result
-     FROM practice_records pr
-     LEFT JOIN users u ON pr.user_id = u.user_id
-     WHERE pr.record_id = ?`,
+  const [rows]: any = await pool.execute(
+    `SELECT dr.record_id, u.name AS user_name, u.employee_id, m.product_line, m.duration, m.evaluation_result
+     FROM debrief_records dr
+     LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
+     LEFT JOIN users u ON dr.user_id = u.user_id
+     WHERE dr.record_id = ?`,
     [recordId]
   );
-
-  if (!rows || rows.length === 0) {
-    [rows] = await pool.execute(
-      `SELECT dr.record_id, u.name AS user_name, u.employee_id, dr.product_line, dr.duration, dr.evaluation_result
-       FROM debrief_records dr
-       LEFT JOIN users u ON dr.user_id = u.user_id
-       WHERE dr.record_id = ?`,
-      [recordId]
-    );
-  }
 
   const record = rows?.[0];
   if (!record || !record.evaluation_result) return;
@@ -79,6 +70,6 @@ ${recommendations || '暂无'}`;
       }),
     });
   } catch (err) {
-    console.error('WeChat Work notification failed:', err);
+    logger.error('WeChat Work notification failed:', err);
   }
 }

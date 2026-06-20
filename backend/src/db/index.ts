@@ -420,22 +420,6 @@ export async function initDb() {
     }
   }
 
-  // Seed training materials
-  const materials = [
-    { title: '大客户销售培训资料', type: 'pdf', duration: '60页', description: 'B2B 大客户销售方法论与实战技巧', tags: ['销售', '大客户', '培训'] },
-    { title: '企业直销手册 2025', type: 'pdf', duration: '200页', description: '2025 年度企业直销标准流程与话术', tags: ['直销', '手册', '2025'] },
-  ];
-  for (const m of materials) {
-    const [rows]: any = await pool.execute('SELECT 1 FROM training_materials WHERE title = ?', [m.title]);
-    if (rows.length === 0) {
-      await pool.execute(
-        `INSERT INTO training_materials (title, type, duration, description, tags)
-         VALUES (?, ?, ?, ?, ?)`,
-        [m.title, m.type, m.duration, m.description, JSON.stringify(m.tags)]
-      );
-    }
-  }
-
   // debrief_records table
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS debrief_records (

@@ -4,16 +4,12 @@ import { ArrowLeft, FileText, BookOpen, Play, Upload, Trash2, Loader2, AlertCirc
 import {
   getProductLines,
   getProductAssets,
+  getAssetFileUrl,
   uploadAsset,
   deleteAsset,
   type ProductLine,
   type ProductAsset,
 } from '../../api/knowledge';
-
-function getFileUrl(a: ProductAsset) {
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
-  return `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
-}
 
 function isDocOrVideo(a: ProductAsset) {
   const path = a.file_path.toLowerCase();
@@ -21,8 +17,7 @@ function isDocOrVideo(a: ProductAsset) {
     a.asset_type === 'manual' ||
     a.asset_type === 'brochure' ||
     a.asset_type === 'video' ||
-    path.endsWith('.mp4') ||
-    path.endsWith('.pdf')
+    path.endsWith('.mp4')
   );
 }
 
@@ -188,10 +183,10 @@ export function ProductDocsManagePage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => window.open(getFileUrl(a), '_blank')}
+                    onClick={() => window.open(getAssetFileUrl(a.asset_id), '_blank')}
                     className="text-xs text-blue-600 font-medium hover:text-blue-700"
                   >
-                    {a.file_path.toLowerCase().endsWith('.mp4') ? '点击播放' : '点击下载'}
+                    {a.file_path.toLowerCase().endsWith('.mp4') ? '点击播放' : '在新窗口打开'}
                   </button>
                   <button
                     onClick={() => handleDelete(a.asset_id)}

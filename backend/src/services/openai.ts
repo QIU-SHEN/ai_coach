@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4';
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || 'https://yunwu.ai';
@@ -46,7 +48,7 @@ export async function callOpenAIResponses(instructions: string, input: string): 
   }
 
   if (!text) {
-    console.error('[OpenAI unexpected format]', JSON.stringify(data, null, 2));
+    logger.error('[OpenAI unexpected format]', JSON.stringify(data, null, 2));
     throw new Error(`Unexpected OpenAI response format`);
   }
   return text;

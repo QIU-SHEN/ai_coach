@@ -64,7 +64,7 @@ export function ProductAssetsOverviewPage() {
   function getCoverUrl() {
     if (!product?.cover_image_asset_id) return null;
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
-    return `${API_BASE}/api/v1/product-assets/${product.cover_image_asset_id}/file`;
+    return `${API_BASE}/api/v1/knowledge/product-assets/${product.cover_image_asset_id}/file`;
   }
 
   const cards = [
@@ -166,7 +166,7 @@ export function ProductAssetsOverviewPage() {
                     <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1">
                       {assets.map((a) => {
                         const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
-                        const url = `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
+                        const url = `${API_BASE}/api/v1/knowledge/product-assets/${a.asset_id}/file`;
                         const isSelected = a.asset_id === product.cover_image_asset_id;
                         return (
                           <button

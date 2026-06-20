@@ -85,7 +85,6 @@ export function DebriefReportPage() {
       const res = await analyzeDebrief(recordId);
       if (res.code === 0 && res.data) {
         setRecord(res.data);
-        // TODO: 后端 user_profiles 接口完成后，调用 refreshUserProfile 触发画像更新
       } else {
         setError('分析失败');
       }
@@ -360,9 +359,9 @@ export function DebriefReportPage() {
                       <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
                         <BookOpen className="w-4 h-4 text-blue-600" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">产品核心卖点培训手册</p>
-                        <p className="text-xs text-gray-500">PDF 文档</p>
+                      <div className="flex-1 min-w-0">v
+                        <p className="text-sm font-medium text-gray-900 truncate">企业直销手册-2025</p>
+                        <p className="text-xs text-gray-500">PDF 文档</p>v
                       </div>
                     </div>
                     <div
@@ -373,8 +372,8 @@ export function DebriefReportPage() {
                         <BookOpen className="w-4 h-4 text-red-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">销售话术实战演练视频</p>
-                        <p className="text-xs text-gray-500">视频</p>
+                        <p className="text-sm font-medium text-gray-900 truncate">大客户销售培训资料</p>
+                        <p className="text-xs text-gray-500">PDF 文档</p>
                       </div>
                     </div>
                   </div>

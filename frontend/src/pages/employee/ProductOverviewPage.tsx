@@ -26,7 +26,7 @@ export function ProductOverviewPage() {
   function getCoverUrl() {
     if (!product?.cover_image_asset_id) return null;
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
-    return `${API_BASE}/api/v1/product-assets/${product.cover_image_asset_id}/file`;
+    return `${API_BASE}/api/v1/knowledge/product-assets/${product.cover_image_asset_id}/file`;
   }
 
   if (loading) {

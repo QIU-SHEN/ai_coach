@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, BookOpen, Play, AlertCircle, X, Download } from 'lucide-react';
-import { getProductLines, getProductAssets, type ProductLine, type ProductAsset } from '../../api/knowledge';
+import { getProductLines, getProductAssets, getAssetFileUrl, type ProductLine, type ProductAsset } from '../../api/knowledge';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+function isPdf(a: ProductAsset) {
+  return a.file_path.toLowerCase().endsWith('.pdf');
+}
 
-function getFileUrl(a: ProductAsset) {
-  return `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
+function isVideo(a: ProductAsset) {
+  return a.file_path.toLowerCase().endsWith('.mp4') || a.file_path.toLowerCase().endsWith('.webm');
 }
 
 export function ProductDocsPage() {
@@ -17,6 +19,28 @@ export function ProductDocsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<ProductAsset | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!previewAsset || !isPdf(previewAsset)) {
+      setPdfBlobUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    fetch(getAssetFileUrl(previewAsset.asset_id))
+      .then((r) => r.blob())
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [previewAsset?.asset_id]);
 
   useEffect(() => {
     if (!productLineId) return;
@@ -41,7 +65,7 @@ export function ProductDocsPage() {
       .then(([foundProduct, allAssets]) => {
         setProduct(foundProduct);
         const docAssets = allAssets.filter(
-          (a) => a.asset_type === 'manual' || a.asset_type === 'brochure' || a.file_path.toLowerCase().endsWith('.mp4')
+          (a) => a.asset_type === 'manual' || a.asset_type === 'brochure' || isVideo(a)
         );
         setAssets(docAssets);
       })
@@ -51,12 +75,6 @@ export function ProductDocsPage() {
       .finally(() => setLoading(false));
   }, [productLineId]);
 
-  const isPdf = (a: ProductAsset) =>
-    a.file_path.toLowerCase().endsWith('.pdf');
-
-  const isVideo = (a: ProductAsset) =>
-    a.file_path.toLowerCase().endsWith('.mp4') ||
-    a.file_path.toLowerCase().endsWith('.webm');
 
   if (loading) {
     return (
@@ -138,7 +156,7 @@ export function ProductDocsPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.open(getFileUrl(previewAsset), '_blank');
+                  window.open(getAssetFileUrl(previewAsset.asset_id), '_blank');
                 }}
                 className="text-white hover:text-gray-300 p-2"
                 title="新窗口打开"
@@ -157,15 +175,19 @@ export function ProductDocsPage() {
           {/* Content */}
           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
             {isPdf(previewAsset) ? (
-              <embed
-                src={getFileUrl(previewAsset)}
-                type="application/pdf"
-                className="w-full max-w-5xl h-full border-0 rounded-lg bg-white"
-              />
+              pdfBlobUrl ? (
+                <embed
+                  src={pdfBlobUrl}
+                  type="application/pdf"
+                  className="w-full max-w-5xl h-full border-0 rounded-lg bg-white"
+                />
+              ) : (
+                <p className="text-white text-sm">加载中...</p>
+              )
             ) : isVideo(previewAsset) ? (
               <video
                 controls
-                src={getFileUrl(previewAsset)}
+                src={getAssetFileUrl(previewAsset.asset_id)}
                 className="w-full max-w-5xl max-h-full rounded-lg"
               />
             ) : (

@@ -21,7 +21,10 @@ import type { ApiResponse } from '../types';
 import { transcribeWithYunwu, transcribeWithWhisper, transcribeWithAlignment } from '../services/asr';
 import { saveUpload } from '../services/storage';
 import { getAudioDuration, detectSilenceRatio } from '../services/audio';
-import { analyzeDebriefContent, summarizeDebriefAnalyses } from '../services/debrief-analysis';
+import { analyzeDebriefContent, summarizeDebriefAnalyses, runBackgroundAnalysis, parseJsonField } from '../services/debrief-analysis';
+import { calculatePersuasionScore } from '../services/scoring';
+import { GENERIC_TRAINING_PLAN_PROMPT, buildPersonalizedTrainingPlanPrompt, buildCustomerSimulationPrompt } from '../services/prompts';
+import { logger } from '../services/logger';
 import { callOpenAIChat } from '../services/openai-chat';
 import { isLocalWhisper } from '../services/asr';
 import type { DebriefMode } from '../types';
@@ -100,7 +103,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
       );
       return res.status(201).json({ code: 0, data: { record_id: recordId } } as ApiResponse);
     } catch (err) {
-      console.error('Debrief create error (simulation):', err);
+      logger.error('Debrief create error (simulation):', err);
       return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: err instanceof Error ? err.message : String(err) } as ApiResponse);
     }
   }
@@ -142,7 +145,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
-      console.error('Debrief create error:', err);
+      logger.error('Debrief create error:', err);
       return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
     }
   }
@@ -179,7 +182,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
 
       // 触发后台分析
       runBackgroundAnalysis(recordId).catch(err => {
-        console.error('Background analysis failed:', recordId, err);
+        logger.error('Background analysis failed:', recordId, err);
       });
 
       return res.status(201).json({
@@ -193,7 +196,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
         },
       } as ApiResponse);
     } catch (err) {
-      console.error('Debrief create error (text):', err);
+      logger.error('Debrief create error (text):', err);
       return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
     }
   }
@@ -228,7 +231,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
     try {
       rawDuration = await getAudioDuration(file.path);
     } catch (audioErr) {
-      console.warn('Failed to get audio duration:', audioErr);
+      logger.warn('Failed to get audio duration:', audioErr);
     }
     const duration = Math.max(0, Math.round(Number(rawDuration) || 0));
 
@@ -286,7 +289,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    console.error('Debrief create error:', err);
+    logger.error('Debrief create error:', err);
     return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -374,22 +377,11 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
 
     res.json({ code: 0, data: { list, total: parseInt(countRows[0].total, 10) } } as ApiResponse);
   } catch (err) {
-    console.error('Debrief list error:', err);
+    logger.error('Debrief list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
-function parseJsonField(value: unknown): unknown {
-  if (!value) return null;
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
-    }
-  }
-  return value;
-}
 
 // GET /debriefs/simulation-list — 获取模拟对话列表
 router.get('/simulation-list', authMiddleware, async (req: AuthRequest, res) => {
@@ -434,7 +426,7 @@ router.get('/simulation-list', authMiddleware, async (req: AuthRequest, res) => 
       data: { list },
     } as ApiResponse);
   } catch (err) {
-    console.error('Simulation list error:', err);
+    logger.error('Simulation list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -525,7 +517,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res, next) => {
 
     res.json({ code: 0, data: base } as ApiResponse);
   } catch (err) {
-    console.error('Debrief detail error:', err);
+    logger.error('Debrief detail error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -589,7 +581,7 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res) => {
 
     res.json({ code: 0, data } as ApiResponse);
   } catch (err) {
-    console.error('Debrief analyze error:', err);
+    logger.error('Debrief analyze error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -624,7 +616,7 @@ router.get('/:id/status', authMiddleware, requireDebriefOwnerOrManager, async (r
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Status check error:', err);
+    logger.error('Status check error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -690,7 +682,7 @@ router.post('/:id/start-asr', authMiddleware, requireDebriefOwnerOrManager, asyn
       );
       return res.json({ code: 0, data: { record_id: id, status: 'completed' } } as ApiResponse);
     } catch (asrErr) {
-      console.error('ASR error:', asrErr);
+      logger.error('ASR error:', asrErr);
       await pool.execute(
         "UPDATE debrief_records SET status = 'failed' WHERE record_id = ?",
         [id]
@@ -704,7 +696,7 @@ router.post('/:id/start-asr', authMiddleware, requireDebriefOwnerOrManager, asyn
       return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '语音识别失败' } as ApiResponse);
     }
   } catch (err) {
-    console.error('Start ASR error:', err);
+    logger.error('Start ASR error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -777,7 +769,7 @@ router.post('/:id/retry-asr', authMiddleware, requireDebriefOwnerOrManager, asyn
       );
       return res.json({ code: 0, data: { record_id: id, status: 'completed' } } as ApiResponse);
     } catch (whisperErr) {
-      console.error('Whisper retry error:', whisperErr);
+      logger.error('Whisper retry error:', whisperErr);
       await pool.execute("UPDATE debrief_records SET status = 'failed' WHERE record_id = ?", [id]);
       await pool.execute(
         `INSERT INTO debrief_practice_meta (record_id, duration, practice_type, error_code, error_message)
@@ -791,7 +783,7 @@ router.post('/:id/retry-asr', authMiddleware, requireDebriefOwnerOrManager, asyn
       } as ApiResponse);
     }
   } catch (err) {
-    console.error('Retry ASR error:', err);
+    logger.error('Retry ASR error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -822,7 +814,7 @@ router.get('/summary', authMiddleware, async (req: AuthRequest, res) => {
 
     res.json({ code: 0, data: { summary } } as ApiResponse);
   } catch (err) {
-    console.error('Debrief summary error:', err);
+    logger.error('Debrief summary error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -836,9 +828,7 @@ router.get('/training-plan', authMiddleware, async (req: AuthRequest, res) => {
       return res.json({ code: 0, data: trainingPlanCache.data } as ApiResponse);
     }
 
-    const systemPrompt = `你是一位资深销售培训专家。请直接生成一份通用的销售培训计划（不基于任何具体员工的练习记录），包含以下三个部分：\n\n1. weekly：未来一周每日培训安排（周一到周日，每天一项）\n   - day: 周几\n   - title: 当日培训主题（具体、有吸引力）\n   - type: video | practice | test | recording | exam\n   - duration: 预计时长（如 "12分钟"、"15分钟"）\n\n2. monthly：月度阶段目标（共4周）\n   - week: 第几周（1-4）\n   - title: 阶段主题\n   - target: 量化目标（具体、可衡量）\n\n3. recommended_materials：推荐学习资料（AI生成，不关联真实数据库）\n   - material_id: 虚拟ID，如 "ai-1", "ai-2" 等\n   - title: 资料名称\n   - type: video | pdf | audio | article\n   - duration: 时长/页数（如 "12分钟"、"2页"、"5分钟阅读"）\n\n请确保内容专业、实用，覆盖销售技巧、产品知识、沟通能力、异议处理等维度。月度目标要有量化指标。\n\n必须严格按以下 JSON 格式返回，不要有任何额外说明：\n{\n  "weekly": [{"day":"周一","title":"...","type":"video","duration":"..."}, ...],\n  "monthly": [{"week":1,"title":"...","target":"..."}, ...],\n  "recommended_materials": [{"material_id":"ai-1","title":"...","type":"video","duration":"..."}, ...]\n}`;
-
-    const responseText = await callOpenAIChat(systemPrompt, '请生成一份销售培训计划');
+    const responseText = await callOpenAIChat(GENERIC_TRAINING_PLAN_PROMPT, '请生成一份销售培训计划');
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
     const planData = JSON.parse(jsonStr);
@@ -846,7 +836,94 @@ router.get('/training-plan', authMiddleware, async (req: AuthRequest, res) => {
     trainingPlanCache = { date: today, data: planData };
     res.json({ code: 0, data: planData } as ApiResponse);
   } catch (err) {
-    console.error('Training plan AI error:', err);
+    logger.error('Training plan AI error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
+// GET /debriefs/:id/training-plan — AI 生成基于评估报告的个性化培训计划
+router.get('/:id/training-plan', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+  try {
+    const recordRows = await query(
+      `SELECT dr.transcript, m.product_line
+       FROM debrief_records dr
+       LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
+       WHERE dr.record_id = ?`,
+      [id]
+    );
+    const record = recordRows[0];
+    if (!record) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
+    }
+
+    const dialogueRows = await query(
+      `SELECT round_number, customer_question, sales_reply, score, feedback, weaknesses, missed_points
+       FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC`,
+      [id]
+    );
+
+    const weakPoints: string[] = [];
+    for (const round of dialogueRows) {
+      const ws = parseJsonField(round.weaknesses) as string[];
+      const ms = parseJsonField(round.missed_points) as string[];
+      if (ws) weakPoints.push(...ws);
+      if (ms) weakPoints.push(...ms);
+    }
+
+    const uniqueWeakPoints = [...new Set(weakPoints)];
+    const roundsSummary = dialogueRows.map((r: any) => ({
+      round: r.round_number,
+      score: r.score,
+      weaknesses: parseJsonField(r.weaknesses),
+      missedPoints: parseJsonField(r.missed_points),
+    }));
+
+    const summaryText = JSON.stringify({
+      productLine: record.product_line,
+      transcript: record.transcript?.substring(0, 2000) || '',
+      dialogueRounds: roundsSummary,
+      weakPoints: uniqueWeakPoints,
+    }, null, 2);
+
+    const weakPointsDesc = uniqueWeakPoints.length > 0
+      ? uniqueWeakPoints.join('、')
+      : '暂无明确薄弱点，请生成通用销售提升计划';
+
+    const systemPrompt = buildPersonalizedTrainingPlanPrompt({
+      productLine: record.product_line || '',
+      weakPointsDesc,
+      roundsSummaryLength: roundsSummary.length,
+      roundsSummary,
+      summaryText,
+    });
+
+    const responseText = await callOpenAIChat(systemPrompt, '请基于练习情况生成个性化培训计划');
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
+    const planData = JSON.parse(jsonStr);
+
+    const materialRows = await query(
+      `SELECT material_id, title, type, duration, file_url, description
+       FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
+    );
+    const recommendedMaterials = materialRows.map((m: any) => ({
+      material_id: m.material_id,
+      title: m.title,
+      type: m.type,
+      duration: m.duration || '',
+      description: m.description || '',
+    }));
+
+    res.json({
+      code: 0,
+      data: {
+        ...planData,
+        recommended_materials: recommendedMaterials,
+      },
+    } as ApiResponse);
+  } catch (err) {
+    logger.error('Training plan error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -884,7 +961,7 @@ router.get('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async 
 
     res.json({ code: 0, data: { record_id: id, dialogue_rounds: dialogueRounds } } as ApiResponse);
   } catch (err) {
-    console.error('Get dialogue error:', err);
+    logger.error('Get dialogue error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -999,7 +1076,7 @@ router.post('/:id/dialogue', authMiddleware, requireDebriefOwnerOrManager, async
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Dialogue error:', err);
+    logger.error('Dialogue error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1048,7 +1125,7 @@ router.post('/:id/reply', authMiddleware, requireDebriefOwnerOrManager, async (r
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Reply error:', err);
+    logger.error('Reply error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1112,7 +1189,7 @@ router.post('/:id/voice-reply', authMiddleware, upload.single('audio'), requireD
       data: { round_number, transcript, saved: true },
     } as ApiResponse);
   } catch (err) {
-    console.error('Voice reply error:', err);
+    logger.error('Voice reply error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1137,7 +1214,7 @@ router.post('/:id/finish-dialogue', authMiddleware, requireDebriefOwnerOrManager
     res.json({ code: 0 } as ApiResponse);
 
     runBackgroundAnalysis(id).catch(async err => {
-      console.error('Background analysis failed:', id, err);
+      logger.error('Background analysis failed:', id, err);
       await pool.execute("UPDATE debrief_records SET status = 'failed' WHERE record_id = ?", [id]);
       await pool.execute(
         'UPDATE debrief_practice_meta SET error_code = ?, error_message = ? WHERE record_id = ?',
@@ -1145,7 +1222,7 @@ router.post('/:id/finish-dialogue', authMiddleware, requireDebriefOwnerOrManager
       );
     });
   } catch (err) {
-    console.error('Finish dialogue error:', err);
+    logger.error('Finish dialogue error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1166,139 +1243,10 @@ router.post('/:id/save-reply', authMiddleware, requireDebriefOwnerOrManager, asy
     );
     res.json({ code: 0 } as ApiResponse);
   } catch (err) {
-    console.error('Save reply error:', err);
+    logger.error('Save reply error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
-
-async function runBackgroundAnalysis(recordId: string) {
-  const recordRows = await query(
-    `SELECT dr.record_id, dr.transcript, m.product_line, m.fluency_score, m.duration, m.transcript_segments, m.audio_type
-     FROM debrief_records dr
-     LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
-     WHERE dr.record_id = ?`,
-    [recordId]
-  );
-  const record = recordRows[0];
-  if (!record || !record.transcript) return;
-
-  const roundRows = await query(
-    `SELECT round_number, customer_question, sales_reply, difficulty, expected_focus, score, feedback, strengths, weaknesses, missed_points
-     FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC`,
-    [recordId]
-  );
-
-  const { scoreSalesReply } = await import('../services/scoring');
-  const { calculateFluencyScore } = await import('../services/fluency-score');
-  const { evaluatePractice } = await import('../services/evaluation');
-
-  for (const round of roundRows) {
-    if (round.score != null || !round.sales_reply) continue;
-    try {
-      const scoringResult = await scoreSalesReply({
-        customerQuestion: round.customer_question,
-        salesReply: round.sales_reply,
-        weakPoints: [],
-        round: round.round_number,
-      });
-      await pool.execute(
-        'UPDATE dialogue_rounds SET score = ?, feedback = ?, strengths = ?, weaknesses = ?, missed_points = ? WHERE record_id = ? AND round_number = ?',
-        [scoringResult.score, scoringResult.feedback, JSON.stringify(scoringResult.strengths), JSON.stringify(scoringResult.weaknesses), JSON.stringify(scoringResult.missedPoints), recordId, round.round_number]
-      );
-      round.score = scoringResult.score;
-      round.feedback = scoringResult.feedback;
-      round.strengths = scoringResult.strengths;
-      round.weaknesses = scoringResult.weaknesses;
-      round.missed_points = scoringResult.missedPoints;
-    } catch (err) {
-      console.error(`Failed to score round ${round.round_number}:`, err);
-    }
-  }
-
-  const updatedRounds = await query(
-    `SELECT round_number, customer_question, sales_reply, difficulty, expected_focus, score, feedback, strengths, weaknesses, missed_points
-     FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC`,
-    [recordId]
-  );
-
-  const segments = parseJsonField(record.transcript_segments) as any[] || [];
-  const fluencyBreakdown = calculateFluencyScore(record.transcript, segments, record.duration || 0);
-  const evaluation = await evaluatePractice(recordId, record.transcript, record.product_line, fluencyBreakdown, segments, record.audio_type);
-
-  const dialogue_history = updatedRounds.map((r: any) => ({
-    round_number: r.round_number,
-    customer_question: r.customer_question,
-    sales_reply: r.sales_reply,
-    difficulty: r.difficulty,
-    score: r.score,
-    feedback: r.feedback,
-    strengths: parseJsonField(r.strengths) ?? [],
-    weaknesses: parseJsonField(r.weaknesses) ?? [],
-    missed_points: parseJsonField(r.missed_points) ?? [],
-  }));
-
-  const weakPoints: string[] = [];
-  for (const round of updatedRounds) {
-    const ws = parseJsonField(round.weaknesses) as string[];
-    const ms = parseJsonField(round.missed_points) as string[];
-    if (ws) weakPoints.push(...ws);
-    if (ms) weakPoints.push(...ms);
-  }
-  const uniqueWeakPoints = [...new Set(weakPoints)];
-  const weakPointsDesc = uniqueWeakPoints.length > 0 ? uniqueWeakPoints.join('、') : '暂无明确薄弱点，请生成通用销售提升计划';
-
-  const trainingPlanPrompt = `你是一位资深销售培训专家。基于以下练习情况生成个性化培训计划。\n\n产品：${record.product_line}\n薄弱点：${weakPointsDesc}\n各轮得分：${updatedRounds.map((r: any) => `第${r.round_number}轮 ${r.score ?? '未评分'}分`).join('、')}\n\n输出 JSON：\n{\n  "weekly": [{"day":"周一","title":"...","type":"video","duration":"..."}, ...],\n  "monthly": [{"week":1,"title":"...","target":"..."}, ...],\n  "recommendations": [{"topic":"...","reason":"..."}, ...]\n}`;
-
-  let trainingPlan = null;
-  try {
-    const planText = await callOpenAIChat(trainingPlanPrompt, '请生成培训计划');
-    const jsonMatch = planText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) trainingPlan = JSON.parse(jsonMatch[0]);
-  } catch (err) {
-    console.error('Training plan generation failed:', err);
-  }
-
-  // 5. Query real training materials and merge into training plan
-  if (trainingPlan) {
-    try {
-      const materialRows = await query(
-        `SELECT material_id, title, type, duration, file_url, description
-         FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
-      );
-      trainingPlan.recommended_materials = materialRows.map((m: any) => ({
-        material_id: m.material_id,
-        title: m.title,
-        type: m.type,
-        duration: m.duration || '',
-        file_url: m.file_url || '',
-        description: m.description || '',
-      }));
-    } catch (err) {
-      console.error('Query training materials failed:', err);
-      trainingPlan.recommended_materials = [];
-    }
-  }
-
-  const evalOverallScore = evaluation.overallScore ?? null;
-  const fullEvaluation = { ...evaluation, dialogue_history };
-
-  // Ensure debrief_practice_meta row exists before updating (handles migrated old records)
-  await pool.execute(
-    `INSERT INTO debrief_practice_meta (record_id, duration, practice_type, evaluation_result, overall_score)
-     VALUES (?, 0, 'intro', ?, ?)
-     ON DUPLICATE KEY UPDATE evaluation_result = VALUES(evaluation_result), overall_score = VALUES(overall_score)`,
-    [recordId, JSON.stringify(fullEvaluation), evalOverallScore]
-  );
-  await pool.execute(
-    `UPDATE debrief_records SET training_plan = ?, status = ? WHERE record_id = ?`,
-    [trainingPlan ? JSON.stringify(trainingPlan) : null, 'completed', recordId]
-  );
-
-  const { sendReportNotification } = await import('../services/notify');
-  sendReportNotification(recordId).catch(err => {
-    console.error('Notification failed:', err);
-  });
-}
 
 // GET /debriefs/:id/evaluation — 获取评估报告
 router.get('/:id/evaluation', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
@@ -1457,7 +1405,7 @@ router.get('/:id/evaluation', authMiddleware, requireDebriefOwnerOrManager, asyn
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Evaluation error:', err);
+    logger.error('Evaluation error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
@@ -1493,7 +1441,7 @@ router.put('/:id/evaluation', authMiddleware, async (req: AuthRequest, res) => {
 
     res.json({ code: 0, message: 'ok' } as ApiResponse);
   } catch (err) {
-    console.error('Update evaluation error:', err);
+    logger.error('Update evaluation error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1561,70 +1509,7 @@ router.get('/:id/pre-analysis', authMiddleware, requireDebriefOwnerOrManager, as
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Pre-analysis error:', err);
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
-  }
-});
-
-// GET /debriefs/:id/training-plan — 基于评估报告生成个性化训练计划
-router.get('/:id/training-plan', authMiddleware, requireDebriefOwnerOrManager, async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  try {
-    const recordRows = await query(
-      `SELECT dr.record_id, dr.transcript, m.product_line
-       FROM debrief_records dr
-       LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
-       WHERE dr.record_id = ?`,
-      [id]
-    );
-    const record = recordRows[0];
-    if (!record) {
-      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
-    }
-
-    const dialogueRows = await query(
-      `SELECT round_number, customer_question, sales_reply, score, feedback, weaknesses, missed_points
-       FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC`,
-      [id]
-    );
-
-    const weakPoints: string[] = [];
-    for (const round of dialogueRows) {
-      const ws = parseJsonField(round.weaknesses) as string[];
-      const ms = parseJsonField(round.missed_points) as string[];
-      if (ws) weakPoints.push(...ws);
-      if (ms) weakPoints.push(...ms);
-    }
-
-    const uniqueWeakPoints = [...new Set(weakPoints)];
-    const roundsSummary = dialogueRows.map((r: any) => ({
-      round: r.round_number,
-      score: r.score,
-      weaknesses: r.weaknesses,
-      missedPoints: r.missed_points,
-    }));
-
-    const summaryText = JSON.stringify({
-      productLine: record.product_line,
-      transcript: record.transcript?.substring(0, 2000) || '',
-      dialogueRounds: roundsSummary,
-      weakPoints: uniqueWeakPoints,
-    }, null, 2);
-
-    const weakPointsDesc = uniqueWeakPoints.length > 0
-      ? uniqueWeakPoints.join('、')
-      : '暂无明确薄弱点，请生成通用销售提升计划';
-
-    const systemPrompt = `你是一位资深销售培训专家。请基于以下员工的练习情况，生成一份个性化的培训计划。\n\n产品：${record.product_line}\n薄弱点：${weakPointsDesc}\n对话轮次：${roundsSummary.length} 轮\n各轮得分：${roundsSummary.map((r: any) => `第${r.round}轮 ${r.score ?? '未评分'}分`).join('、')}\n\n详细数据：\n${summaryText}\n\n请生成以下内容：\n\n1. weekly：未来一周每日培训安排（周一到周日，每天一项）\n   - day: 周几\n   - title: 当日培训主题（具体、有针对性）\n   - type: video | practice | test | recording | exam\n   - duration: 预计时长（如 "12分钟"、"15分钟"）\n\n2. monthly：月度阶段目标（共4周）\n   - week: 第几周（1-4）\n   - title: 阶段主题\n   - target: 量化目标（具体、可衡量）\n\n3. recommendations：个性化学习建议\n   - topic: 学习方向/主题\n   - reason: 为什么需要学这个方向（基于练习中的具体薄弱点）\n\n必须严格按以下 JSON 格式返回，不要有任何额外说明：\n{\n  "weekly": [{"day":"周一","title":"...","type":"video","duration":"..."}, ...],\n  "monthly": [{"week":1,"title":"...","target":"..."}, ...],\n  "recommendations": [{"topic":"...","reason":"..."}, ...]\n}`;
-
-    const responseText = await callOpenAIChat(systemPrompt, '请基于练习情况生成个性化培训计划');
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
-    const planData = JSON.parse(jsonStr);
-
-    res.json({ code: 0, data: planData } as ApiResponse);
-  } catch (err) {
-    console.error('Training plan error:', err);
+    logger.error('Pre-analysis error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1714,7 +1599,7 @@ router.get('/team', authMiddleware, async (req: AuthRequest, res) => {
       data: { list, total: parseInt(countRows[0].total, 10) },
     } as ApiResponse);
   } catch (err) {
-    console.error('Team list error:', err);
+    logger.error('Team list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1746,7 +1631,7 @@ router.get('/showcase', authMiddleware, async (req: AuthRequest, res) => {
     }));
     res.json({ code: 0, data: { list } } as ApiResponse);
   } catch (err) {
-    console.error('Showcase list error:', err);
+    logger.error('Showcase list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1792,7 +1677,7 @@ router.post('/:id/showcase', authMiddleware, async (req: AuthRequest, res) => {
 
     res.json({ code: 0, message: 'ok', data: { is_showcase: !!newShowcase } } as ApiResponse);
   } catch (err) {
-    console.error('Showcase error:', err);
+    logger.error('Showcase error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1819,7 +1704,7 @@ router.post('/:id/review', authMiddleware, requireDebriefOwnerOrManager, async (
 
     res.json({ code: 0, message: 'ok' } as ApiResponse);
   } catch (err) {
-    console.error('Review error:', err);
+    logger.error('Review error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1837,7 +1722,7 @@ router.delete('/:id', authMiddleware, requireDebriefOwnerOrManager, async (req: 
     }
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {
-    console.error('Delete debrief error:', err);
+    logger.error('Delete debrief error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -1906,54 +1791,8 @@ router.post('/:id/dialogue-training', authMiddleware, requireDebriefOwnerOrManag
     const scenariosText = scenariosRows.map((r: any) => `- [${r.scene_type || '通用'}] ${r.title}: ${r.content?.substring(0, 150)}`).join('\n');
     const knowledgeText = knowledgeRows.map((r: any) => `- [${r.category || '通用'}] ${r.title}: ${r.content?.substring(0, 150)}`).join('\n');
 
-    let persuasionScore = 0;
     const dialogues = previous_dialogues || [];
-    let consecutiveNoProductMention = 0;
-
-    for (const round of dialogues) {
-      const reply = round.sales_reply || '';
-      const cq = round.customer_question;
-      if (!reply.trim()) continue;
-
-      persuasionScore += 5;
-      if (reply.length < 10) persuasionScore -= 5;
-      if (/爱买不买|买不起|别问|不知道|不关我事|随便你|懒得|废话/.test(reply)) persuasionScore -= 20;
-      if (/贵|便宜|价格|多少钱/.test(cq) && !/\d|元|块|钱|价格|成本|性价比|划算|值/.test(reply)) persuasionScore -= 10;
-      if (/坏|质量|容易|耐用|维修|售后|质保/.test(cq) && !/质保|保修|技术|认证|稳定|三年|五年|网点|服务/.test(reply)) persuasionScore -= 10;
-      if (/纳滤|NF/.test(knowledgeText) && /RO反渗透|反渗透.*过滤|RO膜/.test(reply) && !/纳滤/.test(reply)) persuasionScore -= 15;
-      if (/3秒|三秒/.test(knowledgeText) && /5秒|五秒|10秒|十几秒|一分钟/.test(reply)) persuasionScore -= 15;
-      if (/699/.test(knowledgeText) && /299|399|499|899|999/.test(reply)) persuasionScore -= 15;
-      if (/\d/.test(reply)) persuasionScore += 5;
-
-      const hasProductMention = /纳滤|RO|反渗透|过滤精度|3秒|即热|无储水|千滚水|废水比|通量|滤芯|TDS|质保|服务网点|400/.test(reply);
-      if (hasProductMention) {
-        persuasionScore += 8;
-        consecutiveNoProductMention = 0;
-      } else {
-        consecutiveNoProductMention++;
-      }
-      if (consecutiveNoProductMention >= 2) {
-        persuasionScore -= 5;
-        consecutiveNoProductMention = 0;
-      }
-      if (/今天|明天|下单|安装|定.*一台|送|活动|优惠|试用|7天|30天|无理由|包换|退货|不满意/.test(reply)) persuasionScore += 10;
-      if (/贵|便宜|价格|多少钱|成本/.test(cq) && /值|对比|划算|省|抵|送|一天|成本|性价比|算下来/.test(reply)) persuasionScore += 10;
-      if (/坏|质量|容易|耐用|维修|售后/.test(cq) && /质保|保修|技术|认证|稳定|大厂|客户|网点/.test(reply)) persuasionScore += 10;
-      if (/竞品|别家|美的|网上|两千|牌子|品牌/.test(cq) && /对比|区别|差异|不如|比不上|更|优势/.test(reply)) persuasionScore += 10;
-      if (/考虑|比比|看看|再说|商量|想想/.test(cq) && /今天|活动|明天|限量|抓紧|过期|恢复原价/.test(reply)) persuasionScore += 12;
-    }
-    const lastReply = dialogues[dialogues.length - 1]?.sales_reply || '';
-    if (/定一台|买一台|今天定|明天装|开票|下单|签合同|付款/.test(lastReply)) persuasionScore += 15;
-    persuasionScore = Math.max(0, Math.min(persuasionScore, 100));
-
-    let attitudeHint = '';
-    if (persuasionScore >= 70) {
-      attitudeHint = `\n\n【内心状态】销售当前累计说服力 ${persuasionScore}/100 分。你已经被打动了，态度明显软化，基本决定购买。如果销售再给一个台阶（如促成下单、强调活动期限），你顺势说出"那就定一台"或"帮我安排安装"即可。`;
-    } else if (persuasionScore >= 45) {
-      attitudeHint = `\n\n【内心状态】销售当前累计说服力 ${persuasionScore}/100 分。你态度有所松动，但仍有些犹豫。可以稍微软化质疑力度，但不要轻易同意购买。`;
-    } else {
-      attitudeHint = `\n\n【内心状态】销售当前累计说服力 ${persuasionScore}/100 分。你仍然很怀疑，继续刁难，保持质疑。`;
-    }
+    const { persuasionScore, attitudeHint } = calculatePersuasionScore(dialogues, knowledgeText);
 
     let previousDialoguesText: string;
     if (!previous_dialogues || previous_dialogues.length === 0) {
@@ -1977,12 +1816,23 @@ router.post('/:id/dialogue-training', authMiddleware, requireDebriefOwnerOrManag
       previousDialoguesText = ` earlier rounds summary：\n${earlierSummary}\n\n recent 5 rounds：\n${recentText}`;
     }
 
-    const systemPrompt = `你是一位模拟真实客户的 AI，正在参与销售培训练习。当前是第 ${round_number ?? 1} 轮对话。\n\n产品信息：\n${knowledgeText}\n\n卖点：\n${sellingPointsText}\n\n话术脚本：\n${scriptsText}\n\n规格参数：\n${specsText}\n\n销售场景：\n${scenariosText}\n\n销售人员薄弱点（请重点围绕这些方向提问/反驳）：\n${weakPoints.length > 0 ? weakPoints.join('、') : '暂无'}\n\n之前对话：\n${previousDialoguesText}${attitudeHint}\n\n请扮演一个真实的潜在客户，根据销售人员的回复继续对话。你的回复应自然、口语化，可以有适度的质疑、犹豫或兴趣。如果销售已经较好回应了你的问题，你可以稍微软化态度；如果销售回答不到位，请继续追问或表示不满。\n\n请只输出客户说的话，不要有任何额外说明。`;
+    const weakPointsText = weakPoints.length > 0 ? weakPoints.join('、') : '暂无';
+    const systemPrompt = buildCustomerSimulationPrompt({
+      roundNumber: round_number ?? 1,
+      knowledgeText,
+      sellingPointsText,
+      scriptsText,
+      specsText,
+      scenariosText,
+      weakPointsText,
+      previousDialoguesText,
+      attitudeHint,
+    });
 
     const responseText = await callOpenAIChat(systemPrompt, '请继续扮演客户进行对话练习');
     res.json({ code: 0, data: { customer_question: responseText.trim(), persuasion_score: persuasionScore } } as ApiResponse);
   } catch (err) {
-    console.error('Dialogue training error:', err);
+    logger.error('Dialogue training error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -2068,7 +1918,7 @@ router.post('/:id/simulation/send', authMiddleware, requireDebriefOwnerOrManager
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Simulation send error:', err);
+    logger.error('Simulation send error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -2110,7 +1960,7 @@ router.post('/:id/simulation/finish', authMiddleware, requireDebriefOwnerOrManag
       data: evalResult,
     } as ApiResponse);
   } catch (err) {
-    console.error('Simulation finish error:', err);
+    logger.error('Simulation finish error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -2140,7 +1990,7 @@ router.get('/:id/simulation', authMiddleware, requireDebriefOwnerOrManager, asyn
       data: { record_id: id, rounds },
     } as ApiResponse);
   } catch (err) {
-    console.error('Get simulation error:', err);
+    logger.error('Get simulation error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });

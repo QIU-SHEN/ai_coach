@@ -1459,7 +1459,7 @@ export function ProductAssetsTab() {
   const [deleting, setDeleting] = useState(false);
 
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
-  const getFileUrl = (a: ProductAsset) => `${API_BASE}/api/v1/product-assets/${a.asset_id}/file`;
+  const getFileUrl = (a: ProductAsset) => `${API_BASE}/api/v1/knowledge/product-assets/${a.asset_id}/file`;
   const isImageType = (a: ProductAsset) => /\.(jpe?g|png|webp|gif)$/i.test(a.file_path);
 
   const resetPipeline = () => {

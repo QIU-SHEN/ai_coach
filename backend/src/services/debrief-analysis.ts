@@ -1,4 +1,20 @@
+import { pool, parseJsonRows } from '../db';
 import { callOpenAIChat } from './openai-chat';
+import { logger } from './logger';
+import { buildPersonalizedTrainingPlanPrompt } from './prompts';
+
+export function parseJsonField(value: unknown): unknown {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value); } catch { return null; }
+  }
+  return value;
+}
+
+async function query(sql: string, params?: any[]) {
+  const [rows] = await pool.execute(sql, params);
+  return parseJsonRows(rows as any[]);
+}
 
 const POST_MEETING_PROMPT = `你是一位资深销售培训专家。请根据以下销售人员的见客描述，分析谈单全流程。
 
@@ -143,4 +159,132 @@ export async function summarizeDebriefAnalyses(analyses: any[]) {
   const response = await callOpenAIChat(prompt, '请严格按照 JSON 格式输出汇总分析。');
   const jsonText = response.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
   return JSON.parse(jsonText);
+}
+
+export async function runBackgroundAnalysis(recordId: string) {
+  const recordRows = await query(
+    `SELECT dr.record_id, dr.transcript, m.product_line, m.fluency_score, m.duration, m.transcript_segments, m.audio_type
+     FROM debrief_records dr
+     LEFT JOIN debrief_practice_meta m ON dr.record_id = m.record_id
+     WHERE dr.record_id = ?`,
+    [recordId]
+  );
+  const record = recordRows[0];
+  if (!record || !record.transcript) return;
+
+  const roundRows = await query(
+    `SELECT round_number, customer_question, sales_reply, difficulty, expected_focus, score, feedback, strengths, weaknesses, missed_points
+     FROM dialogue_rounds WHERE record_id = ? ORDER BY round_number ASC`,
+    [recordId]
+  );
+
+  const { scoreSalesReply } = await import('./scoring');
+  const { calculateFluencyScore } = await import('./fluency-score');
+  const { evaluatePractice } = await import('./evaluation');
+
+  for (const round of roundRows) {
+    if (round.score != null || !round.sales_reply) continue;
+    try {
+      const scoringResult = await scoreSalesReply({
+        customerQuestion: round.customer_question,
+        salesReply: round.sales_reply,
+        weakPoints: [],
+        round: round.round_number,
+      });
+      await pool.execute(
+        'UPDATE dialogue_rounds SET score = ?, feedback = ?, strengths = ?, weaknesses = ?, missed_points = ? WHERE record_id = ? AND round_number = ?',
+        [scoringResult.score, scoringResult.feedback, JSON.stringify(scoringResult.strengths), JSON.stringify(scoringResult.weaknesses), JSON.stringify(scoringResult.missedPoints), recordId, round.round_number]
+      );
+      round.score = scoringResult.score;
+      round.feedback = scoringResult.feedback;
+      round.strengths = scoringResult.strengths;
+      round.weaknesses = scoringResult.weaknesses;
+      round.missed_points = scoringResult.missedPoints;
+    } catch (err) {
+      logger.error(`Failed to score round ${round.round_number}:`, err);
+    }
+  }
+
+  const segments = parseJsonField(record.transcript_segments) as any[] || [];
+  const fluencyBreakdown = calculateFluencyScore(record.transcript, segments, record.duration || 0);
+  const evaluation = await evaluatePractice(recordId, record.transcript, record.product_line, fluencyBreakdown, segments, record.audio_type);
+
+  const dialogue_history = roundRows.map((r: any) => ({
+    round_number: r.round_number,
+    customer_question: r.customer_question,
+    sales_reply: r.sales_reply,
+    difficulty: r.difficulty,
+    score: r.score,
+    feedback: r.feedback,
+    strengths: parseJsonField(r.strengths) ?? [],
+    weaknesses: parseJsonField(r.weaknesses) ?? [],
+    missed_points: parseJsonField(r.missed_points) ?? [],
+  }));
+
+  const weakPoints: string[] = [];
+  for (const round of roundRows) {
+    const ws = parseJsonField(round.weaknesses) as string[];
+    const ms = parseJsonField(round.missed_points) as string[];
+    if (ws) weakPoints.push(...ws);
+    if (ms) weakPoints.push(...ms);
+  }
+  const uniqueWeakPoints = [...new Set(weakPoints)];
+  const weakPointsDesc = uniqueWeakPoints.length > 0 ? uniqueWeakPoints.join('、') : '暂无明确薄弱点，请生成通用销售提升计划';
+
+  const roundsSummary = roundRows.map((r: any) => ({ round: r.round_number, score: r.score as number | null }));
+  const trainingPlanPrompt = buildPersonalizedTrainingPlanPrompt({
+    productLine: record.product_line || '',
+    weakPointsDesc,
+    roundsSummaryLength: roundRows.length,
+    roundsSummary,
+    summaryText: '',
+  });
+
+  let trainingPlan = null;
+  try {
+    const planText = await callOpenAIChat(trainingPlanPrompt, '请生成培训计划');
+    const jsonMatch = planText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) trainingPlan = JSON.parse(jsonMatch[0]);
+  } catch (err) {
+    logger.error('Training plan generation failed:', err);
+  }
+
+  if (trainingPlan) {
+    try {
+      const materialRows = await query(
+        `SELECT material_id, title, type, duration, file_url, description
+         FROM training_materials WHERE status = 'active' ORDER BY created_at DESC LIMIT 10`
+      );
+      trainingPlan.recommended_materials = materialRows.map((m: any) => ({
+        material_id: m.material_id,
+        title: m.title,
+        type: m.type,
+        duration: m.duration || '',
+        file_url: m.file_url || '',
+        description: m.description || '',
+      }));
+    } catch (err) {
+      logger.error('Query training materials failed:', err);
+      trainingPlan.recommended_materials = [];
+    }
+  }
+
+  const evalOverallScore = evaluation.overallScore ?? null;
+  const fullEvaluation = { ...evaluation, dialogue_history };
+
+  await pool.execute(
+    `INSERT INTO debrief_practice_meta (record_id, duration, practice_type, evaluation_result, overall_score)
+     VALUES (?, 0, 'intro', ?, ?)
+     ON DUPLICATE KEY UPDATE evaluation_result = VALUES(evaluation_result), overall_score = VALUES(overall_score)`,
+    [recordId, JSON.stringify(fullEvaluation), evalOverallScore]
+  );
+  await pool.execute(
+    `UPDATE debrief_records SET training_plan = ?, status = ? WHERE record_id = ?`,
+    [trainingPlan ? JSON.stringify(trainingPlan) : null, 'completed', recordId]
+  );
+
+  const { sendReportNotification } = await import('./notify');
+  sendReportNotification(recordId).catch(err => {
+    logger.error('Notification failed:', err);
+  });
 }

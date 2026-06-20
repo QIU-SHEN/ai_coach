@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Download, Headphones, Play, FileText, Loader2 } from 'lucide-react';
-import { getMaterialById, type MaterialItem } from '../../api/knowledge';
+import { getMaterialById, downloadMaterial, fetchMaterialPdf, type MaterialItem } from '../../api/knowledge';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
 
@@ -11,6 +11,7 @@ export function MaterialPreviewPage() {
   const [material, setMaterial] = useState<MaterialItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!materialId) return;
@@ -26,6 +27,24 @@ export function MaterialPreviewPage() {
       .catch(() => setError('加载失败'))
       .finally(() => setLoading(false));
   }, [materialId]);
+
+  useEffect(() => {
+    if (!material || material.type !== 'pdf') return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    fetchMaterialPdf(material.material_id)
+      .then((buffer) => {
+        if (cancelled) return;
+        const blob = new Blob([buffer], { type: 'application/pdf' });
+        objectUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [material?.material_id]);
 
   if (loading) {
     return (
@@ -48,24 +67,17 @@ export function MaterialPreviewPage() {
     );
   }
 
-  const rawUrl = material.file_url || '';
-  const fileUrl = rawUrl
-    ? rawUrl.startsWith('http')
-      ? rawUrl
-      : `${API_BASE}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`
-    : '';
+  const fileUrl = !material.file_url
+    ? ''
+    : material.file_url.startsWith('http')
+      ? material.file_url
+      : `${API_BASE}/${material.file_url.replace(/^\//, '')}`;
 
   const handleDownload = () => {
-    if (!fileUrl) return;
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.setAttribute('download', material.title);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadMaterial(material.material_id, material.title).catch(() => {});
   };
 
-  const handleBack = () => navigate('/employee/materials');
+  const handleBack = () => navigate(-1);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -103,14 +115,18 @@ export function MaterialPreviewPage() {
       {/* Content */}
       <div className="flex-1 p-6">
         <div className="max-w-5xl mx-auto bg-white rounded-xl border overflow-hidden h-[calc(100vh-180px)]">
-          {material.type === 'pdf' && fileUrl && (
+          {material.type === 'pdf' && (
             <div className="h-full w-full">
-              <embed
-                src={fileUrl}
-                type="application/pdf"
-                className="w-full h-full border-0"
-                title={material.title}
-              />
+              {pdfBlobUrl ? (
+                <embed
+                  src={pdfBlobUrl}
+                  type="application/pdf"
+                  className="w-full h-full border-0"
+                  title={material.title}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-sm text-gray-400">加载中...</div>
+              )}
             </div>
           )}
 
@@ -142,7 +158,7 @@ export function MaterialPreviewPage() {
             </div>
           )}
 
-          {(material.type === 'article' || !['pdf', 'video', 'audio'].includes(material.type)) && (
+          {!['pdf', 'video', 'audio'].includes(material.type) && (
             <div className="p-8">
               {material.description ? (
                 <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed whitespace-pre-wrap">

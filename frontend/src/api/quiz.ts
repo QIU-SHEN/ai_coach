@@ -35,7 +35,7 @@ export async function getQuizzes(productLineId?: string): Promise<{ code: number
 }
 
 export async function generateQuizzes(productLineId: string): Promise<{ code: number; data?: { count: number; quizzes: Quiz[] } }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/generate-quizzes`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/generate-quizzes`, {
     method: 'POST',
     headers: { ...authHeaders() },
   });
@@ -72,7 +72,7 @@ export async function deleteQuiz(quizId: string): Promise<{ code: number; messag
 }
 
 export async function getQuizzesByMaterial(materialId: string): Promise<{ code: number; data?: { list: Quiz[] } }> {
-  const res = await fetch(`${API_BASE}/api/v1/training-materials/${materialId}/quizzes`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/training-materials/${materialId}/quizzes`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -80,7 +80,7 @@ export async function getQuizzesByMaterial(materialId: string): Promise<{ code: 
 }
 
 export async function generateQuizzesForMaterial(materialId: string): Promise<{ code: number; data?: { count: number; quizzes: Quiz[] } }> {
-  const res = await fetch(`${API_BASE}/api/v1/training-materials/${materialId}/generate-quizzes`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/training-materials/${materialId}/generate-quizzes`, {
     method: 'POST',
     headers: { ...authHeaders() },
   });

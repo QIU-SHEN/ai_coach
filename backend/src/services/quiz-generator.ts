@@ -1,5 +1,6 @@
 import { callOpenAIChat } from './openai-chat';
 import { pool } from '../db';
+import { logger } from './logger';
 
 const QUIZ_GENERATOR_PROMPT = `你是一位产品知识培训专家。请基于以下产品资料，为该产品生成 10 道选择题，用于考核销售人员对产品知识的掌握程度。
 
@@ -87,7 +88,7 @@ export async function generateQuizzesForProduct(productLineId: string) {
   try {
     quizzes = JSON.parse(extractText);
   } catch (err) {
-    console.error('[QuizGenerator] JSON parse failed, raw response:', response.substring(0, 800));
+    logger.error('[QuizGenerator] JSON parse failed, raw response:', response.substring(0, 800));
     throw new Error('AI 返回的内容不是有效 JSON，请重试');
   }
 

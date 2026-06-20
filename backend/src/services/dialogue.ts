@@ -1,5 +1,6 @@
 import { callOpenAIResponses, extractJson } from './openai';
 import type { DialogueResult, GenerateCustomerQuestionInput } from '../types/dialogue';
+import { logger } from './logger';
 
 // 保留旧接口兼容
 export { generateCustomerQuestion };
@@ -174,7 +175,7 @@ async function generateCustomerQuestion(
   try {
     result = extractJson<typeof result>(text);
   } catch (parseErr) {
-    console.error('[Dialogue] JSON parse failed, raw text:', text, 'error:', parseErr);
+    logger.error('[Dialogue] JSON parse failed, raw text:', text, 'error:', parseErr);
     // Fallback: return a default question to keep conversation going
     const fallbackQuestions = [
       '你刚才说的我不太满意，能再详细说说吗？',

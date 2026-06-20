@@ -1,3 +1,14 @@
+export class AppError extends Error {
+  constructor(
+    public status: number,
+    public code: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
+}
+
 // HTTP 400 Bad Request - Client upload validation errors
 export const ERR_FILE_TOO_LARGE = { code: 400001, message: '文件大小超过100MB限制' };
 export const ERR_UNSUPPORTED_FORMAT = { code: 400002, message: '格式不支持，请转换为mp3/wav/m4a后重新上传' };

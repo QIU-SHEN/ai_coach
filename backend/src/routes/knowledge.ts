@@ -4,25 +4,28 @@ import fs from 'fs';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { pool, parseJsonRows } from '../db';
-import { ERR_MISSING_PARAMS, ERR_RECORD_NOT_FOUND, ERR_INTERNAL_SERVER } from '../constants/errors';
+import { query as baseQuery } from '../db/query';
+import { AppError, ERR_MISSING_PARAMS, ERR_RECORD_NOT_FOUND, ERR_INTERNAL_SERVER } from '../constants/errors';
 import type { ApiResponse } from '../types';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/permission';
 import { aiSummarizeProduct, saveSummaries } from '../services/ai-summarize';
+import { logger } from '../services/logger';
 import { aiClassifyRawTexts, aiTagClassified } from '../services/ai-classify';
 import { aiExtractTexts } from '../services/ai-extract-texts';
 import { callOpenAIChat } from '../services/openai-chat';
 import { generateProductDescription } from '../services/ai-generate-description';
 import { saveUpload, deleteFile } from '../services/storage';
+import { generateQuizzesForProduct, generateQuizzesForMaterial } from '../services/quiz-generator';
 
 const router = Router();
 
 const upload = multer({ dest: path.resolve(process.cwd(), 'uploads/tmp') });
 
-// Helper: pool.query returns [rows, fields] for mysql2
+// Helper: uses shared query + auto-parse JSON fields (MariaDB longtext compatibility)
 async function query(sql: string, params?: any[]) {
-  const [rows] = await pool.execute(sql, params);
-  return parseJsonRows(rows as any[]);
+  const rows = await baseQuery(sql, params);
+  return parseJsonRows(rows);
 }
 
 // Product Lines
@@ -45,7 +48,7 @@ router.get('/product-lines', authMiddleware, async (req, res) => {
     );
     res.json({ code: 0, data: { list: rows, total: rows.length } } as ApiResponse);
   } catch (err) {
-    console.error('Product lines error:', err);
+    logger.error('Product lines error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -107,7 +110,7 @@ router.get('/product-lines/tree', authMiddleware, async (_req, res) => {
 
     res.json({ code: 0, data: { tree, total: rows.length } } as ApiResponse);
   } catch (err) {
-    console.error('Product lines tree error:', err);
+    logger.error('Product lines tree error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -139,7 +142,7 @@ router.post('/product-lines', authMiddleware, requireRole('manager', 'admin'), a
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '产品线名称已存在' } as ApiResponse);
     }
-    console.error('Create product line error:', err);
+    logger.error('Create product line error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -162,7 +165,7 @@ router.put('/product-lines/:product_line_id', authMiddleware, requireRole('admin
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '产品线名称已存在' } as ApiResponse);
     }
-    console.error('Update product line error:', err);
+    logger.error('Update product line error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -189,7 +192,7 @@ router.put('/product-lines/:product_line_id/cover-image', authMiddleware, requir
     );
     res.json({ code: 0, data: { cover_image_asset_id: asset_id, file_path: assetRows[0].file_path } } as ApiResponse);
   } catch (err) {
-    console.error('Set cover image error:', err);
+    logger.error('Set cover image error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -206,13 +209,13 @@ router.delete('/product-lines/:product_line_id', authMiddleware, requireRole('ma
     }
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {
-    console.error('Delete product line error:', err);
+    logger.error('Delete product line error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
-// Product Knowledge
-router.get('/knowledge', authMiddleware, async (req, res) => {
+// Product Knowledge Items
+router.get('/items', authMiddleware, async (req, res) => {
   const { product_line_id, category, page = '1', limit = '20' } = req.query;
   const offset = (parseInt(page as string, 10) - 1) * parseInt(limit as string, 10);
   try {
@@ -241,12 +244,12 @@ router.get('/knowledge', authMiddleware, async (req, res) => {
       data: { list: listRows, total: parseInt(countRows[0].total, 10) },
     } as ApiResponse);
   } catch (err) {
-    console.error('Knowledge list error:', err);
+    logger.error('Knowledge list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
-router.get('/knowledge/:id', authMiddleware, async (req, res) => {
+router.get('/items/:id', authMiddleware, async (req, res) => {
   const { id } = req.params;
   try {
     const rows = await query(
@@ -259,12 +262,12 @@ router.get('/knowledge/:id', authMiddleware, async (req, res) => {
     }
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Knowledge get error:', err);
+    logger.error('Knowledge get error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
-router.post('/knowledge', authMiddleware, requireRole('admin'), async (req, res) => {
+router.post('/items', authMiddleware, requireRole('admin'), async (req, res) => {
   const { product_line_id, title, content, category, tags } = req.body;
   if (!title || !content) {
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 title 或 content' } as ApiResponse);
@@ -279,12 +282,12 @@ router.post('/knowledge', authMiddleware, requireRole('admin'), async (req, res)
     const rows = await query('SELECT * FROM product_knowledge WHERE knowledge_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Knowledge create error:', err);
+    logger.error('Knowledge create error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
-router.put('/knowledge/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+router.put('/items/:id', authMiddleware, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   const { product_line_id, title, content, category, tags, status } = req.body;
   try {
@@ -300,18 +303,18 @@ router.put('/knowledge/:id', authMiddleware, requireRole('admin'), async (req, r
     const rows = await query('SELECT * FROM product_knowledge WHERE knowledge_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Knowledge update error:', err);
+    logger.error('Knowledge update error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
-router.delete('/knowledge/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+router.delete('/items/:id', authMiddleware, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   try {
     await pool.execute('DELETE FROM product_knowledge WHERE knowledge_id = ?', [id]);
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {
-    console.error('Knowledge delete error:', err);
+    logger.error('Knowledge delete error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -330,7 +333,7 @@ router.get('/scripts/:id', authMiddleware, async (req, res) => {
     }
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Script get error:', err);
+    logger.error('Script get error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -364,7 +367,7 @@ router.get('/scripts', authMiddleware, async (req, res) => {
       data: { list: listRows, total: parseInt(countRows[0].total, 10) },
     } as ApiResponse);
   } catch (err) {
-    console.error('Scripts list error:', err);
+    logger.error('Scripts list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -384,7 +387,7 @@ router.post('/scripts', authMiddleware, requireRole('admin'), async (req, res) =
     const rows = await query('SELECT * FROM sales_scripts WHERE script_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Scripts create error:', err);
+    logger.error('Scripts create error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -405,7 +408,7 @@ router.put('/scripts/:id', authMiddleware, requireRole('admin'), async (req, res
     const rows = await query('SELECT * FROM sales_scripts WHERE script_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Scripts update error:', err);
+    logger.error('Scripts update error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -416,7 +419,7 @@ router.delete('/scripts/:id', authMiddleware, requireRole('admin'), async (req, 
     await pool.execute('DELETE FROM sales_scripts WHERE script_id = ?', [id]);
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {
-    console.error('Scripts delete error:', err);
+    logger.error('Scripts delete error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -435,7 +438,7 @@ router.get('/materials/:id', authMiddleware, async (req, res) => {
     }
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Material get error:', err);
+    logger.error('Material get error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -465,7 +468,7 @@ router.get('/materials', authMiddleware, async (req, res) => {
       data: { list: listRows, total: parseInt(countRows[0].total, 10) },
     } as ApiResponse);
   } catch (err) {
-    console.error('Materials list error:', err);
+    logger.error('Materials list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -491,7 +494,7 @@ router.post('/materials', authMiddleware, requireRole('manager', 'admin'), uploa
       fs.renameSync(file.path, destPath);
       fileUrl = `/uploads/materials/${destName}`;
     } catch (err) {
-      console.error('Material file save error:', err);
+      logger.error('Material file save error:', err);
       if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '文件保存失败' } as ApiResponse);
     }
@@ -508,7 +511,7 @@ router.post('/materials', authMiddleware, requireRole('manager', 'admin'), uploa
     const rows = await query('SELECT * FROM training_materials WHERE material_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Materials create error:', err);
+    logger.error('Materials create error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -529,7 +532,7 @@ router.put('/materials/:id', authMiddleware, requireRole('manager', 'admin'), as
     const rows = await query('SELECT * FROM training_materials WHERE material_id = ?', [id]);
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Materials update error:', err);
+    logger.error('Materials update error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -545,7 +548,7 @@ router.delete('/materials/:id', authMiddleware, requireRole('manager', 'admin'),
     await pool.execute('DELETE FROM training_materials WHERE material_id = ?', [id]);
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {
-    console.error('Materials delete error:', err);
+    logger.error('Materials delete error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -583,7 +586,7 @@ router.get('/materials/:id/download', authMiddleware, async (req, res) => {
             }
             res.end();
           } catch (err) {
-            console.error('Stream error:', err);
+            logger.error('Stream error:', err);
             if (!res.headersSent) res.status(500).end();
           }
         };
@@ -605,7 +608,7 @@ router.get('/materials/:id/download', authMiddleware, async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(material.title + ext)}"`);
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    console.error('Material download error:', err);
+    logger.error('Material download error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -653,7 +656,7 @@ router.get('/product-assets', authMiddleware, async (req, res) => {
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Product assets list error:', err);
+    logger.error('Product assets list error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -690,7 +693,7 @@ router.get('/product-assets/:asset_id/file', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(displayFilename)}`);
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    console.error('Asset file read error:', err);
+    logger.error('Asset file read error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -739,7 +742,7 @@ router.post('/product-assets/upload', authMiddleware, requireRole('manager', 'ad
 
     res.json({ code: 0, data: rows[0] } as ApiResponse);
   } catch (err) {
-    console.error('Asset upload error:', err);
+    logger.error('Asset upload error:', err);
     // clean up on failure
     if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
@@ -763,7 +766,7 @@ router.delete('/product-assets/:asset_id', authMiddleware, requireRole('manager'
     await pool.execute('DELETE FROM product_assets WHERE asset_id = ?', [asset_id]);
     res.json({ code: 0, message: '删除成功' } as ApiResponse);
   } catch (err) {
-    console.error('Asset delete error:', err);
+    logger.error('Asset delete error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -795,7 +798,7 @@ router.post('/product-assets/batch-delete', authMiddleware, requireRole('admin')
     );
     res.json({ code: 0, data: { deleted_count: (result as any).affectedRows } } as ApiResponse);
   } catch (err) {
-    console.error('Asset batch delete error:', err);
+    logger.error('Asset batch delete error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -807,7 +810,7 @@ router.post('/product-lines/:product_line_id/ai-summarize', authMiddleware, requ
     const result = await aiSummarizeProduct(product_line_id);
     res.json({ code: 0, data: result } as ApiResponse);
   } catch (err) {
-    console.error('AI summarize error:', err);
+    logger.error('AI summarize error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
@@ -824,7 +827,7 @@ router.post('/product-lines/:product_line_id/save-summaries', authMiddleware, re
     const count = await saveSummaries(product_line_id, summaries, mode);
     res.json({ code: 0, data: { saved_count: count, mode: mode || 'full' } } as ApiResponse);
   } catch (err) {
-    console.error('Save summaries error:', err);
+    logger.error('Save summaries error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -837,7 +840,7 @@ router.post('/product-lines/:product_line_id/ai-classify', authMiddleware, requi
     const result = await aiClassifyRawTexts(product_line_id, asset_ids);
     res.json({ code: 0, data: result } as ApiResponse);
   } catch (err) {
-    console.error('AI classify error:', err);
+    logger.error('AI classify error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
@@ -853,7 +856,7 @@ router.post('/product-lines/:product_line_id/ai-tag', authMiddleware, requireRol
     const result = await aiTagClassified(categories);
     res.json({ code: 0, data: { categories: result } } as ApiResponse);
   } catch (err) {
-    console.error('AI tag error:', err);
+    logger.error('AI tag error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
@@ -868,7 +871,7 @@ router.post('/product-lines/:product_line_id/ai-extract-texts', authMiddleware, 
     const result = await aiExtractTexts(product_line_id, force, asset_ids);
     res.json({ code: 0, data: result } as ApiResponse);
   } catch (err) {
-    console.error('AI extract texts error:', err);
+    logger.error('AI extract texts error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
@@ -882,7 +885,7 @@ router.post('/product-lines/:product_line_id/generate-description', authMiddlewa
     const description = await generateProductDescription(product_line_id, asset_ids);
     res.json({ code: 0, data: { description } } as ApiResponse);
   } catch (err) {
-    console.error('Generate description error:', err);
+    logger.error('Generate description error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
@@ -913,7 +916,7 @@ router.get('/product-lines/:product_line_id/asset-texts', authMiddleware, async 
       },
     } as ApiResponse);
   } catch (err) {
-    console.error('Asset texts query error:', err);
+    logger.error('Asset texts query error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
@@ -927,7 +930,7 @@ const DEDUP_TABLES: Record<string, { id_col: string; label: string; title_col: s
   sales_scenarios: { id_col: 'scenario_id', label: '场景案例', title_col: 'title', content_col: 'content' },
 };
 
-router.post('/knowledge/dedup', authMiddleware, requireRole('admin'), async (req, res) => {
+router.post('/items/dedup', authMiddleware, requireRole('admin'), async (req, res) => {
   const { product_line_id, tables } = req.body;
   if (!product_line_id || !tables || !Array.isArray(tables) || tables.length === 0) {
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 product_line_id 或 tables' } as ApiResponse);
@@ -988,14 +991,14 @@ ${itemsList}
     const totalDuplicates = groups.reduce((sum, g) => sum + g.items.filter(i => !i.keep).length, 0);
     res.json({ code: 0, data: { groups, total_groups: groups.length, total_duplicates: totalDuplicates } } as ApiResponse);
   } catch (err) {
-    console.error('Dedup error:', err);
+    logger.error('Dedup error:', err);
     const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
   }
 });
 
 // Batch delete — remove items across multiple tables
-router.post('/knowledge/batch-delete', authMiddleware, requireRole('admin'), async (req, res) => {
+router.post('/items/batch-delete', authMiddleware, requireRole('admin'), async (req, res) => {
   const { items } = req.body as { items: Array<{ table: string; id: string }> };
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 items 数组' } as ApiResponse);
@@ -1011,9 +1014,32 @@ router.post('/knowledge/batch-delete', authMiddleware, requireRole('admin'), asy
     }
     res.json({ code: 0, data: { deleted_count: deletedCount } } as ApiResponse);
   } catch (err) {
-    console.error('Batch delete error:', err);
+    logger.error('Batch delete error:', err);
     res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
+});
+
+// Quiz generation routes (product-line / material domain)
+router.post('/product-lines/:id/generate-quizzes', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
+  const result = await generateQuizzesForProduct(req.params.id);
+  res.json({ code: 0, data: result } as ApiResponse);
+});
+
+router.get('/training-materials/:material_id/quizzes', authMiddleware, async (req, res) => {
+  const rows = await query(
+    `SELECT q.quiz_id, q.product_line_id, q.question, q.options, q.correct_index, q.explanation, q.difficulty, q.category, q.status, pl.name as product_line_name
+     FROM product_quizzes q
+     LEFT JOIN product_lines pl ON q.product_line_id = pl.product_line_id
+     WHERE q.material_id = ? AND q.status = 'active'
+     ORDER BY q.created_at DESC`,
+    [req.params.material_id]
+  );
+  res.json({ code: 0, data: { list: rows.map((r: any) => ({ ...r, options: typeof r.options === 'string' ? JSON.parse(r.options) : r.options })) } } as ApiResponse);
+});
+
+router.post('/training-materials/:material_id/generate-quizzes', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
+  const result = await generateQuizzesForMaterial(req.params.material_id);
+  res.json({ code: 0, data: result } as ApiResponse);
 });
 
 export default router;

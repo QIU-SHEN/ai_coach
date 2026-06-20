@@ -900,39 +900,3 @@ export async function getShowcaseList(limit?: number): Promise<{ code: number; d
   return (await res.json()) as { code: number; data: { list: ShowcaseItem[] } };
 }
 
-// --- User Profile (待后端联调) ---
-
-export interface UserProfile {
-  style_label: string;
-  style_traits: string[];
-  ability_radar: Record<string, number>;
-  strengths: string[];
-  weaknesses: string[];
-  learning_suggestions: { topic: string; reason: string }[];
-  last_updated: string;
-}
-
-export interface UserProfileResult {
-  code: number;
-  data?: UserProfile;
-}
-
-/** 待后端联调：获取用户画像。当前先从 debrief list 中推导。 */
-export async function getUserProfile(_userId: string): Promise<UserProfileResult> {
-  // 临时占位：后端接口完成后替换为真实调用
-  // const res = await fetch(`${API_BASE}/api/v1/users/${userId}/profile`, { headers: { ...authHeaders() } });
-  // if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  // return (await res.json()) as UserProfileResult;
-  throw new Error('Not implemented');
-}
-
-/** 待后端联调：手动触发画像更新。 */
-export async function refreshUserProfile(_userId: string): Promise<{ code: number; message?: string }> {
-  // const res = await fetch(`${API_BASE}/api/v1/users/${userId}/profile/refresh`, {
-  //   method: 'POST',
-  //   headers: { ...authHeaders() },
-  // });
-  // if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  // return (await res.json()) as { code: number; message?: string };
-  throw new Error('Not implemented');
-}

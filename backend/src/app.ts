@@ -1,9 +1,10 @@
 import 'dotenv/config';
+import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { initDb } from './db';
-import practicesRouter from './routes/practices';
+import { errorHandler } from './middleware/error-handler';
 import authRouter from './routes/auth';
 import knowledgeRouter from './routes/knowledge';
 import trainingUnitsRouter from './routes/training-units';
@@ -56,16 +57,18 @@ app.use('/uploads', (req, res, next) => {
 }));
 
 app.use('/api/v1/auth', authRouter);
-app.use('/api/v1/practices', practicesRouter);
-app.use('/api/v1', knowledgeRouter);
-app.use('/api/v1', trainingUnitsRouter);
-app.use('/api/v1', settingsRouter);
+app.use('/api/v1/knowledge', knowledgeRouter);
+app.use('/api/v1/training', trainingUnitsRouter);
+app.use('/api/v1/settings', settingsRouter);
 app.use('/api/v1/debriefs', debriefsRouter);
-app.use('/api/v1', quizzesRouter);
+app.use('/api/v1/quizzes', quizzesRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
+
+// Centralized error handler (must be last)
+app.use(errorHandler);
 
 async function main() {
   await initDb();

@@ -146,7 +146,7 @@ export interface TrainingPlanResult {
 }
 
 export async function getProductLines(): Promise<ProductLinesResult> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -154,7 +154,7 @@ export async function getProductLines(): Promise<ProductLinesResult> {
 }
 
 export async function getProductLinesTree(): Promise<{ code: number; data: { tree: ProductLine[] } }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/tree`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/tree`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -162,7 +162,7 @@ export async function getProductLinesTree(): Promise<{ code: number; data: { tre
 }
 
 export async function createProductLine(name: string, description?: string, parent_id?: string | null, level?: number, sort_order?: number): Promise<{ code: number; data: ProductLine }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name, description, parent_id, level, sort_order }),
@@ -172,7 +172,7 @@ export async function createProductLine(name: string, description?: string, pare
 }
 
 export async function updateProductLine(id: string, name: string, description?: string, status?: string, parent_id?: string | null, level?: number, sort_order?: number): Promise<{ code: number; data: ProductLine }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name, description, status, parent_id, level, sort_order }),
@@ -182,7 +182,7 @@ export async function updateProductLine(id: string, name: string, description?: 
 }
 
 export async function deleteProductLine(id: string): Promise<{ code: number; message: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -191,7 +191,7 @@ export async function deleteProductLine(id: string): Promise<{ code: number; mes
 }
 
 export async function getKnowledgeById(id: string): Promise<{ code: number; data?: KnowledgeItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/knowledge/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/items/${id}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -204,7 +204,7 @@ export async function getKnowledge(params?: { product_line_id?: string; category
   if (params?.category) qs.set('category', params.category);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 20));
-  const res = await fetch(`${API_BASE}/api/v1/knowledge?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/items?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -222,7 +222,7 @@ export async function createKnowledge(input: Omit<KnowledgeItem, 'knowledge_id' 
 }
 
 export async function updateKnowledge(id: string, input: Partial<Omit<KnowledgeItem, 'knowledge_id' | 'created_at' | 'updated_at'>>): Promise<{ code: number; message?: string; data?: KnowledgeItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/knowledge/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/items/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(input),
@@ -232,7 +232,7 @@ export async function updateKnowledge(id: string, input: Partial<Omit<KnowledgeI
 }
 
 export async function deleteKnowledge(id: string): Promise<{ code: number; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/knowledge/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/items/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -241,7 +241,7 @@ export async function deleteKnowledge(id: string): Promise<{ code: number; messa
 }
 
 export async function getScriptById(id: string): Promise<{ code: number; data?: ScriptItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/scripts/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/scripts/${id}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -254,7 +254,7 @@ export async function getScripts(params?: { product_line_id?: string; scene?: st
   if (params?.scene) qs.set('scene', params.scene);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 20));
-  const res = await fetch(`${API_BASE}/api/v1/scripts?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/scripts?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -262,7 +262,7 @@ export async function getScripts(params?: { product_line_id?: string; scene?: st
 }
 
 export async function createScript(input: Omit<ScriptItem, 'script_id' | 'created_at' | 'updated_at'>): Promise<{ code: number; message?: string; data?: ScriptItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/scripts`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/scripts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(input),
@@ -272,7 +272,7 @@ export async function createScript(input: Omit<ScriptItem, 'script_id' | 'create
 }
 
 export async function updateScript(id: string, input: Partial<Omit<ScriptItem, 'script_id' | 'created_at' | 'updated_at'>>): Promise<{ code: number; message?: string; data?: ScriptItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/scripts/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/scripts/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(input),
@@ -282,7 +282,7 @@ export async function updateScript(id: string, input: Partial<Omit<ScriptItem, '
 }
 
 export async function deleteScript(id: string): Promise<{ code: number; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/scripts/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/scripts/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -291,7 +291,7 @@ export async function deleteScript(id: string): Promise<{ code: number; message?
 }
 
 export async function getMaterialById(id: string): Promise<{ code: number; data?: MaterialItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/materials/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials/${id}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -303,7 +303,7 @@ export async function getMaterials(params?: { type?: string; page?: number; limi
   if (params?.type) qs.set('type', params.type);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 20));
-  const res = await fetch(`${API_BASE}/api/v1/materials?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -330,7 +330,7 @@ export async function createMaterial(input: {
   if (input.product_line_id) formData.append('product_line_id', input.product_line_id);
   if (input.file) formData.append('file', input.file);
 
-  const res = await fetch(`${API_BASE}/api/v1/materials`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials`, {
     method: 'POST',
     headers: { ...authHeaders() },
     body: formData,
@@ -340,7 +340,7 @@ export async function createMaterial(input: {
 }
 
 export async function updateMaterial(id: string, input: Partial<Omit<MaterialItem, 'material_id' | 'created_at' | 'updated_at'>>): Promise<{ code: number; message?: string; data?: MaterialItem }> {
-  const res = await fetch(`${API_BASE}/api/v1/materials/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(input),
@@ -350,7 +350,7 @@ export async function updateMaterial(id: string, input: Partial<Omit<MaterialIte
 }
 
 export async function deleteMaterial(id: string): Promise<{ code: number; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/materials/${id}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -364,7 +364,7 @@ export async function getSellingPoints(params?: { product_line_id?: string; cate
   if (params?.category) qs.set('category', params.category);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 20));
-  const res = await fetch(`${API_BASE}/api/v1/selling-points?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/training/selling-points?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -376,7 +376,7 @@ export async function getProductSpecs(params?: { product_line_id?: string; page?
   if (params?.product_line_id) qs.set('product_line_id', params.product_line_id);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 20));
-  const res = await fetch(`${API_BASE}/api/v1/product-specs?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/training/product-specs?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -389,7 +389,7 @@ export async function getSalesScenarios(params?: { product_line_id?: string; sce
   if (params?.scene_type) qs.set('scene_type', params.scene_type);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 20));
-  const res = await fetch(`${API_BASE}/api/v1/sales-scenarios?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/training/sales-scenarios?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -405,7 +405,7 @@ export async function getTrainingUnitsSummary(): Promise<TrainingUnitsSummaryRes
 }
 
 export async function getTrainingPlan(recordId: string): Promise<TrainingPlanResult> {
-  const res = await fetch(`${API_BASE}/api/v1/practices/${recordId}/training-plan`, {
+  const res = await fetch(`${API_BASE}/api/v1/debriefs/${recordId}/training-plan`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -436,7 +436,7 @@ export interface DedupResult {
 }
 
 export async function aiDedup(productLineId: string, tables: string[]): Promise<DedupResult> {
-  const res = await fetch(`${API_BASE}/api/v1/knowledge/dedup`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/items/dedup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ product_line_id: productLineId, tables }),
@@ -446,7 +446,7 @@ export async function aiDedup(productLineId: string, tables: string[]): Promise<
 }
 
 export async function batchDeleteKnowledge(items: { table: string; id: string }[]): Promise<{ code: number; data: { deleted_count: number } }> {
-  const res = await fetch(`${API_BASE}/api/v1/knowledge/batch-delete`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/items/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ items }),
@@ -476,7 +476,7 @@ export async function getProductAssets(params?: { product_line_id?: string; asse
   if (params?.asset_type) qs.set('asset_type', params.asset_type);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 50));
-  const res = await fetch(`${API_BASE}/api/v1/product-assets?${qs.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-assets?${qs.toString()}`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -498,7 +498,7 @@ export async function uploadAsset(
     formData.append('asset_type', assetType);
     if (title) formData.append('title', title);
 
-    xhr.open('POST', `${API_BASE}/api/v1/product-assets/upload`);
+    xhr.open('POST', `${API_BASE}/api/v1/knowledge/product-assets/upload`);
     const headers = authHeaders();
     Object.entries(headers).forEach(([key, value]) => {
       xhr.setRequestHeader(key, value);
@@ -530,8 +530,12 @@ export async function uploadAsset(
   });
 }
 
+export function getAssetFileUrl(assetId: string): string {
+  return `${API_BASE}/api/v1/knowledge/product-assets/${assetId}/file`;
+}
+
 export async function deleteAsset(assetId: string): Promise<{ code: number; message: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-assets/${assetId}`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-assets/${assetId}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -540,7 +544,7 @@ export async function deleteAsset(assetId: string): Promise<{ code: number; mess
 }
 
 export async function batchDeleteAssets(assetIds: string[]): Promise<{ code: number; data: { deleted_count: number } }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-assets/batch-delete`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-assets/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ asset_ids: assetIds }),
@@ -581,7 +585,7 @@ export interface AiClassifyResult {
 }
 
 export async function aiClassify(productLineId: string, assetIds?: string[]): Promise<AiClassifyResult> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/ai-classify`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/ai-classify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(assetIds && assetIds.length > 0 ? { asset_ids: assetIds } : undefined),
@@ -591,7 +595,7 @@ export async function aiClassify(productLineId: string, assetIds?: string[]): Pr
 }
 
 export async function aiTag(productLineId: string, categories: AiClassifyCategory[]): Promise<AiClassifyResult> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/ai-tag`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/ai-tag`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ categories }),
@@ -601,7 +605,7 @@ export async function aiTag(productLineId: string, categories: AiClassifyCategor
 }
 
 export async function saveSummaries(productLineId: string, summaries: AiSummaryItem[], mode?: 'full' | 'append'): Promise<{ code: number; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/save-summaries`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/save-summaries`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ summaries, mode }),
@@ -631,7 +635,7 @@ export interface AssetTextsResult {
 }
 
 export async function getAssetTexts(productLineId: string): Promise<AssetTextsResult> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/asset-texts`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/asset-texts`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -639,7 +643,7 @@ export async function getAssetTexts(productLineId: string): Promise<AssetTextsRe
 }
 
 export async function aiExtractTexts(productLineId: string, assetIds?: string[]): Promise<{ code: number; data: { product_line_id: string; product_name: string; extracted_count: number; texts: Array<{ file_path: string; file_type: string; char_count: number }> } }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/ai-extract-texts`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/ai-extract-texts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(assetIds && assetIds.length > 0 ? { asset_ids: assetIds } : undefined),
@@ -649,7 +653,7 @@ export async function aiExtractTexts(productLineId: string, assetIds?: string[])
 }
 
 export async function setProductCoverImage(productLineId: string, assetId: string): Promise<{ code: number; data: { cover_image_asset_id: string; file_path: string } }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/cover-image`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/cover-image`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ asset_id: assetId }),
@@ -659,7 +663,7 @@ export async function setProductCoverImage(productLineId: string, assetId: strin
 }
 
 export async function generateProductDescription(productLineId: string, assetIds?: string[]): Promise<{ code: number; data: { description: string } }> {
-  const res = await fetch(`${API_BASE}/api/v1/product-lines/${productLineId}/generate-description`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${productLineId}/generate-description`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(assetIds ? { asset_ids: assetIds } : {}),
@@ -669,7 +673,7 @@ export async function generateProductDescription(productLineId: string, assetIds
 }
 
 export async function fetchMaterialPdf(id: string): Promise<ArrayBuffer> {
-  const res = await fetch(`${API_BASE}/api/v1/materials/${id}/download`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials/${id}/download`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -677,7 +681,7 @@ export async function fetchMaterialPdf(id: string): Promise<ArrayBuffer> {
 }
 
 export async function downloadMaterial(materialId: string, title: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/v1/materials/${materialId}/download`, {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/materials/${materialId}/download`, {
     headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error(`下载失败: ${res.status}`);
