@@ -5,6 +5,7 @@ import { getDebriefList, uploadAudio, type DebriefRecord } from '../../api/debri
 import { ProductLineSelector } from '../../components/ProductLineSelector';
 import { Card } from '../../components/ui/Card';
 import { ScoreBadge } from '../../components/ui/ScoreBadge';
+import { useToast } from '../../hooks/useToast';
 
 export function AssessmentPage() {
   const navigate = useNavigate();
@@ -80,6 +81,7 @@ export function AssessmentPage() {
 // ──────────────────────────────────────────
 
 function NewAssessmentForm() {
+  const { toast } = useToast();
   const [productLineId, setProductLineId] = useState('');
   const [assessmentName, setAssessmentName] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -137,7 +139,7 @@ function NewAssessmentForm() {
         setRecordSeconds((s) => s + 1);
       }, 1000);
     } catch {
-      alert('无法访问麦克风，请检查权限');
+      toast.error('无法访问麦克风，请检查权限');
     }
   };
 

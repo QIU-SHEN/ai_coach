@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Image, FileText, Edit3, X, Check } from 'lucide-react';
 import { getProductLines, getProductAssets, setProductCoverImage, type ProductLine, type ProductAsset } from '../../api/knowledge';
+import { useToast } from '../../hooks/useToast';
 
 export function ProductAssetsOverviewPage() {
   const { productLineId } = useParams<{ productLineId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const [product, setProduct] = useState<ProductLine | null>(null);
   const [assets, setAssets] = useState<ProductAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ export function ProductAssetsOverviewPage() {
         setProduct((prev) => prev ? { ...prev, cover_image_asset_id: assetId } : null);
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '设置失败');
+      toast.error(err instanceof Error ? err.message : '设置失败');
     } finally {
       setSavingCover(false);
       setSelectingCover(false);

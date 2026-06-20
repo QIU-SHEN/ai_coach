@@ -12,6 +12,7 @@ import {
   type MaterialItem,
   type ProductLine,
 } from '../../api/knowledge';
+import { useToast } from '../../hooks/useToast';
 
 type ItemType = 'knowledge' | 'script' | 'material';
 
@@ -24,6 +25,7 @@ const typeInfo: Record<ItemType, { label: string; icon: typeof BookOpen; color: 
 export function LearningDetailPage() {
   const { type, id } = useParams<{ type: ItemType; id: string }>();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
 
   const [knowledge, setKnowledge] = useState<KnowledgeItem | null>(null);
@@ -189,7 +191,7 @@ export function LearningDetailPage() {
         </button>
         <button
           onClick={() => {
-            alert('已标记为已学习');
+            toast.success('已标记为已学习');
             navigate('/employee/learning');
           }}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"

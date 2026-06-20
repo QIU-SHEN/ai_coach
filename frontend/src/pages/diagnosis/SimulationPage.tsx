@@ -12,6 +12,7 @@ import {
 import { Card } from '../../components/ui/Card';
 import { ProductLineSelector } from '../../components/ProductLineSelector';
 import { createDebrief } from '../../api/debrief';
+import { useToast } from '../../hooks/useToast';
 
 // ── 角色定义 ──
 interface CustomerRole {
@@ -83,6 +84,7 @@ const purchaseStatuses: PurchaseStatus[] = [
 
 export function SimulationPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState<string>('decision_maker');
   const [selectedStatus, setSelectedStatus] = useState<string>('observing');
   const [productLineId, setProductLineId] = useState('');
@@ -113,10 +115,10 @@ export function SimulationPage() {
           },
         });
       } else {
-        alert('创建模拟对话失败，请重试');
+        toast.error('创建模拟对话失败，请重试');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '创建失败');
+      toast.error(err instanceof Error ? err.message : '创建失败');
     } finally {
       setStarting(false);
     }
