@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -14,22 +14,23 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-let nextId = 0;
-
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-  const addToast = useCallback((type: ToastItem['type'], message: string) => {
-    const id = nextId++;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-  }, []);
+  const nextId = useRef(0);
+  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const removeToast = useCallback((id: number) => {
+    clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const addToast = useCallback((type: ToastItem['type'], message: string) => {
+    const id = nextId.current++;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    const timer = setTimeout(() => removeToast(id), 3000);
+    timers.current.set(id, timer);
+  }, [removeToast]);
 
   return (
     <ToastContext.Provider value={{ addToast }}>

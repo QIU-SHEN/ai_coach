@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { AlertTriangle, HelpCircle, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
@@ -25,6 +25,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
 
   const requestConfirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
+    // If a dialog is already open, resolve it as false before opening a new one
+    if (resolveRef.current) {
+      resolveRef.current(false);
+    }
     return new Promise((resolve) => {
       resolveRef.current = resolve;
       setState({ open: true, options });
@@ -94,6 +98,14 @@ function ConfirmDialogOverlay({
   const config = variantConfig[variant];
   const Icon = config.icon;
   const title = options.title || '确认操作';
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onCancel]);
 
   return (
     <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center" onClick={onCancel}>

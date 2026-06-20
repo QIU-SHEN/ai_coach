@@ -1572,7 +1572,7 @@ export function ProductAssetsTab() {
           setTotal(res.data.total);
         }
       })
-      .catch(() => setAssets([]))
+      .catch(() => toast.error('刷新素材列表失败，请手动刷新页面'))
       .finally(() => setLoading(false));
   };
 

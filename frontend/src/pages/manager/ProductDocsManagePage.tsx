@@ -19,7 +19,8 @@ function isDocOrVideo(a: ProductAsset) {
     a.asset_type === 'manual' ||
     a.asset_type === 'brochure' ||
     a.asset_type === 'video' ||
-    path.endsWith('.mp4')
+    path.endsWith('.mp4') ||
+    path.endsWith('.pdf')
   );
 }
 

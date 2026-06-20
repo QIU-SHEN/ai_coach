@@ -4,6 +4,7 @@ import { ArrowLeft, Image, X, Upload, Trash2, Loader2, AlertCircle, Sparkles, Ch
 import {
   getProductLines,
   getProductAssets,
+  getAssetFileUrl,
   uploadAsset,
   deleteAsset,
   generateProductDescription,
@@ -17,11 +18,6 @@ const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
 function isImagePath(path: string) {
   return imageExts.some((ext) => path.toLowerCase().endsWith(ext));
-}
-
-function getFileUrl(a: ProductAsset) {
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
-  return `${API_BASE}/api/v1/knowledge/product-assets/${a.asset_id}/file`;
 }
 
 export function ProductImagesManagePage() {
@@ -250,7 +246,7 @@ export function ProductImagesManagePage() {
                     onClick={() => setPreviewIndex(idx)}
                   >
                     <img
-                      src={getFileUrl(a)}
+                      src={getAssetFileUrl(a.asset_id)}
                       alt={a.title}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -368,7 +364,7 @@ function PreviewModal({
       )}
 
       <div className="max-w-[90vw] max-h-[80vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-        <img src={getFileUrl(asset)} alt={asset.title} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
+        <img src={getAssetFileUrl(asset.asset_id)} alt={asset.title} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
       </div>
 
       {assets.length > 1 && (

@@ -53,9 +53,12 @@ export function Navbar() {
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        // toast 后延迟 1 秒再跳转，确保用户能看到提示
         toast.success('密码修改成功，请重新登录');
-        logout();
-        window.location.href = '/login';
+        setTimeout(() => {
+          logout();
+          window.location.href = '/login';
+        }, 1000);
       } else {
         setPwdError(res.message || '修改失败');
       }
