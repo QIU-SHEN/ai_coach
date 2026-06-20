@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { ScoreBadge } from '../../components/ui/ScoreBadge';
 import { Avatar } from '../../components/ui/Avatar';
+import { Skeleton, SkeletonCircle } from '../../components/ui/Skeleton';
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -299,9 +300,16 @@ export function TeamListPage() {
 
         <div className="flex-1 overflow-y-auto">
           {loading && (
-            <div className="p-6 text-center text-gray-500">
-              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
-              加载中...
+            <div className="space-y-3 p-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 p-2">
+                  <SkeletonCircle size="md" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3.5 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
