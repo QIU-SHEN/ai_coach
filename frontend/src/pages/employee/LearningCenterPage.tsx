@@ -8,6 +8,7 @@ import {
   type ProductLine,
 } from '../../api/knowledge';
 import { ProductMaterialsView } from '../../components/ProductMaterialsView';
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 
 type SubTab = 'materials' | 'assets';
 
@@ -144,7 +145,15 @@ export function LearningCenterPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400 py-8 text-center">加载中...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border p-4 space-y-3">
+              <Skeleton className="h-32 w-full rounded-lg" />
+              <Skeleton className="h-4 w-3/4" />
+              <SkeletonText lines={2} />
+            </div>
+          ))}
+        </div>
       ) : (
         <>
           {/* 培训资料 */}

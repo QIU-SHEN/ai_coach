@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Image, FileText } from 'lucide-react';
 import { getProductLines, type ProductLine } from '../../api/knowledge';
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 
 export function ProductOverviewPage() {
   const { productLineId } = useParams<{ productLineId: string }>();
@@ -31,8 +32,18 @@ export function ProductOverviewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-sm text-gray-400">加载中...</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto p-6 space-y-6">
+          <div className="space-y-3">
+            <Skeleton className="h-8 w-1/3" />
+            <SkeletonText lines={3} />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+            <Skeleton className="h-6 w-14 rounded-full" />
+          </div>
+        </div>
       </div>
     );
   }

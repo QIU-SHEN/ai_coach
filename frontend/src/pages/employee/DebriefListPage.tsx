@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ClipboardList, Loader2, ChevronRight, BarChart3, MessageSquare, PhoneCall, Headphones } from 'lucide-react';
+import { Plus, ClipboardList, ChevronRight, BarChart3, MessageSquare, PhoneCall, Headphones } from 'lucide-react';
 import { getDebriefList, type DebriefRecord } from '../../api/debrief';
 import { getProductLines, type ProductLine } from '../../api/knowledge';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../hooks/useToast';
+import { Skeleton, SkeletonCircle } from '../../components/ui/Skeleton';
 
 function ModeBadge({ mode }: { mode?: string }) {
   if (mode === 'call_recording') {
@@ -113,8 +114,17 @@ export function DebriefListPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+        <div className="space-y-3 p-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border p-4 flex items-center gap-4">
+              <SkeletonCircle size="md" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-8 w-16 rounded-lg" />
+            </div>
+          ))}
         </div>
       )}
 
