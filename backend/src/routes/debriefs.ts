@@ -446,7 +446,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res, next) => {
     const rows = await query(
       `SELECT dr.record_id, dr.user_id, dr.product_line_id, dr.title, dr.content, dr.audio_path,
               dr.transcript, dr.analysis, dr.training_plan, dr.status, dr.debrief_mode,
-              dr.speaker_diagram, dr.created_at,
+              dr.speaker_diagram, dr.created_at, dr.overall_score as debrief_score,
               m.duration, m.practice_type, m.audio_type, m.transcript_segments,
               m.overall_score as meta_score, m.weak_points, m.fluency_score,
               m.evaluation_result, m.pre_analysis, m.initial_scores,
@@ -511,6 +511,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res, next) => {
     } else {
       Object.assign(base, {
         content: record.content,
+        overall_score: record.debrief_score != null ? Number(record.debrief_score) : null,
         analysis: parseJsonField(record.analysis),
         speaker_diagram: parseJsonField(record.speaker_diagram),
       });
