@@ -153,6 +153,14 @@ export async function getProductLines(): Promise<ProductLinesResult> {
   return (await res.json()) as ProductLinesResult;
 }
 
+export async function getProductLineById(id: string): Promise<{ code: number; data: ProductLine }> {
+  const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/${id}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as { code: number; data: ProductLine };
+}
+
 export async function getProductLinesTree(): Promise<{ code: number; data: { tree: ProductLine[] } }> {
   const res = await fetch(`${API_BASE}/api/v1/knowledge/product-lines/tree`, {
     headers: { ...authHeaders() },

@@ -115,6 +115,24 @@ router.get('/product-lines/tree', authMiddleware, async (_req, res) => {
   }
 });
 
+// GET /product-lines/:id — 单条产品线
+router.get('/product-lines/:product_line_id', authMiddleware, async (req, res) => {
+  const { product_line_id } = req.params;
+  try {
+    const rows = await query(
+      'SELECT product_line_id, parent_id, name, description, level, sort_order, status, cover_image_asset_id, created_at FROM product_lines WHERE product_line_id = ?',
+      [product_line_id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ code: ERR_RECORD_NOT_FOUND.code, message: ERR_RECORD_NOT_FOUND.message } as ApiResponse);
+    }
+    res.json({ code: 0, data: rows[0] } as ApiResponse);
+  } catch (err) {
+    logger.error('Product line get error:', err);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+  }
+});
+
 // Create product line
 router.post('/product-lines', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
   const { name, description, parent_id, level, sort_order = 0 } = req.body;
@@ -633,8 +651,15 @@ router.get('/product-assets', authMiddleware, async (req, res) => {
       where += ' AND product_line_id = ?';
     }
     if (asset_type) {
-      params.push(asset_type);
-      where += ' AND asset_type = ?';
+      // 支持逗号分隔的多值过滤，如 ?asset_type=manual,brochure
+      const types = (asset_type as string).split(',').map((t) => t.trim()).filter(Boolean);
+      if (types.length === 1) {
+        params.push(types[0]);
+        where += ' AND asset_type = ?';
+      } else if (types.length > 1) {
+        params.push(...types);
+        where += ` AND asset_type IN (${types.map(() => '?').join(', ')})`;
+      }
     }
 
     const countRows = await query(`SELECT COUNT(*) as total FROM product_assets ${where}`, params);

@@ -3,6 +3,7 @@ import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import { initDb } from './db';
 import { errorHandler } from './middleware/error-handler';
 import authRouter from './routes/auth';
@@ -24,6 +25,30 @@ app.use(
   })
 );
 app.use(express.json());
+
+// 全局限流：200 次/分钟
+app.use(rateLimit({
+  windowMs: 60_000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { code: 429, message: '请求过于频繁，请稍后重试' },
+}));
+
+// 上传接口限流：5 次/分钟（防止大文件批量上传耗尽资源）
+app.use('/api/v1/knowledge/product-assets/upload', rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  message: { code: 429, message: '上传过于频繁，请 1 分钟后再试' },
+}));
+
+// AI 对话接口限流：30 次/分钟（防止暴力调用产生大量费用）
+app.use('/api/v1/debriefs', rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  message: { code: 429, message: 'AI 请求过于频繁，请稍后重试' },
+  skip: (req) => !req.path.includes('simulation') && !req.path.includes('dialogue'),
+}));
 
 // Serve local uploaded files (training materials, etc.)
 // 强制内联预览，避免浏览器自动下载
