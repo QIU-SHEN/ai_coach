@@ -10,6 +10,8 @@ import {
   type ProductLine,
   type ProductAsset,
 } from '../../api/knowledge';
+import { useConfirm } from '../../hooks/useConfirm';
+import { useToast } from '../../hooks/useToast';
 
 const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
@@ -26,6 +28,8 @@ export function ProductImagesManagePage() {
   const { productLineId } = useParams<{ productLineId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
   const [product, setProduct] = useState<ProductLine | null>(null);
   const [assets, setAssets] = useState<ProductAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,17 +87,17 @@ export function ProductImagesManagePage() {
       if (res.code === 0) {
         await loadData();
       } else {
-        alert(res.message || '上传失败');
+        toast.error(res.message || '上传失败');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '上传失败');
+      toast.error(err instanceof Error ? err.message : '上传失败');
     } finally {
       setUploading(false);
     }
   }
 
   async function handleDelete(assetId: string) {
-    if (!confirm('确定删除该图片？')) return;
+    if (!await confirm({ message: '确定删除该图片？', variant: 'danger' })) return;
     setDeletingId(assetId);
     try {
       const res = await deleteAsset(assetId);
@@ -105,10 +109,10 @@ export function ProductImagesManagePage() {
           return next;
         });
       } else {
-        alert(res.message || '删除失败');
+        toast.error(res.message || '删除失败');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     } finally {
       setDeletingId(null);
     }
@@ -137,7 +141,7 @@ export function ProductImagesManagePage() {
     const msg = useSelected
       ? `将基于选中的 ${selectedAssets.size} 张图片生成产品介绍，此过程可能需要 10-30 秒，是否继续？`
       : '将基于所有素材生成产品介绍，此过程可能需要 20-40 秒，是否继续？';
-    if (!confirm(msg)) return;
+    if (!await confirm({ title: 'AI 生成产品介绍', message: msg, variant: 'warning' })) return;
     setGeneratingDesc(true);
     setDescSuccess('');
     setError(null);

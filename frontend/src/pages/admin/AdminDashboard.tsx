@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit2, Trash2, X, ImageIcon, FileText, Film, Package, Image, BookOpen, Sparkles, Loader2, Eye, Upload, CheckSquare, Square, Settings2, Mic, MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { register, getUserList, resetUserPassword, batchAssignManager, type UserListItem, type RegisterInput } from '../../api/auth';
 import { getSettings, updateSettings } from '../../api/settings';
+import { useConfirm } from '../../hooks/useConfirm';
+import { useToast } from '../../hooks/useToast';
 import { ProductLineSelector } from '../../components/ProductLineSelector';
 import {
   getProductLines,
@@ -55,6 +57,8 @@ function getProductLineName(lines: ProductLine[], id?: string) {
 
 export function KnowledgeBaseTab() {
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
   const [subTab] = useState<KnowledgeSubTab>('materials');
   const { productLines, refresh: refreshPL } = useProductLines();
 
@@ -132,19 +136,19 @@ export function KnowledgeBaseTab() {
       setPlForm({ name: '', description: '' });
       setPlEditingId(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '操作失败');
+      toast.error(err instanceof Error ? err.message : '操作失败');
     } finally {
       setPlSaving(false);
     }
   };
 
   const handlePLDelete = async (id: string) => {
-    if (!confirm('确定删除该产品线？如有关联数据需先清理。')) return;
+    if (!await confirm({ message: '确定删除该产品线？如有关联数据需先清理。', variant: 'danger' })) return;
     try {
       await deleteProductLine(id);
       refreshPL();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     }
   };
 
@@ -1416,6 +1420,8 @@ type PipelineStep = 'idle' | 'classify' | 'tag' | 'done';
 
 export function ProductAssetsTab() {
   const { productLines, refresh: refreshPL } = useProductLines();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
   const [selectedLine, setSelectedLine] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
   const [assets, setAssets] = useState<ProductAsset[]>([]);
@@ -1482,19 +1488,19 @@ export function ProductAssetsTab() {
       setPlForm({ name: '', description: '' });
       setPlEditingId(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '操作失败');
+      toast.error(err instanceof Error ? err.message : '操作失败');
     } finally {
       setPlSaving(false);
     }
   };
 
   const handlePLDelete = async (id: string) => {
-    if (!confirm('确定删除该产品线？如有关联数据需先清理。')) return;
+    if (!await confirm({ message: '确定删除该产品线？如有关联数据需先清理。', variant: 'danger' })) return;
     try {
       await deleteProductLine(id);
       refreshPL();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     }
   };
 
@@ -1525,7 +1531,7 @@ export function ProductAssetsTab() {
 
   const handleDeleteSelected = async () => {
     if (selectedAssets.size === 0) return;
-    if (!confirm(`确定删除 ${selectedAssets.size} 个素材？`)) return;
+    if (!await confirm({ message: `确定删除 ${selectedAssets.size} 个素材？`, variant: 'danger' })) return;
     setDeleting(true);
     try {
       if (selectedAssets.size === 1) {
@@ -1536,20 +1542,20 @@ export function ProductAssetsTab() {
       setSelectedAssets(new Set());
       fetchAssets();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     } finally {
       setDeleting(false);
     }
   };
 
   const handleDeleteOne = async (assetId: string) => {
-    if (!confirm('确定删除该素材？')) return;
+    if (!await confirm({ message: '确定删除该素材？', variant: 'danger' })) return;
     try {
       await deleteAsset(assetId);
       setSelectedAssets((prev) => { const n = new Set(prev); n.delete(assetId); return n; });
       fetchAssets();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     }
   };
 

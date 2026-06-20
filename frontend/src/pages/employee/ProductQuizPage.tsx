@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, CheckCircle, XCircle, BookOpen, AlertCircle, RotateCcw, Trophy } from 'lucide-react';
 import { getProductLines, type ProductLine } from '../../api/knowledge';
 import { getQuizzes, getQuizzesByMaterial, submitAttempt, getQuizProgress, type Quiz } from '../../api/quiz';
+import { useConfirm } from '../../hooks/useConfirm';
 
 interface AttemptResult {
   quizId: string;
@@ -150,8 +151,10 @@ export function ProductQuizPage() {
     }
   }
 
-  function handleReset() {
-    if (!confirm('确定要重新做题吗？之前的答题记录将保留。')) return;
+  const { confirm } = useConfirm();
+
+  async function handleReset() {
+    if (!await confirm({ message: '确定要重新做题吗？之前的答题记录将保留。', variant: 'default' })) return;
     setAttempts({});
   }
 

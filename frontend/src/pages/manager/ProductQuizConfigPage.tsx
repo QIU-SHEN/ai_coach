@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Sparkles, Loader2, Trash2, AlertCircle, CheckCircle, BookOpen } from 'lucide-react';
 import { getProductLines, type ProductLine } from '../../api/knowledge';
 import { getQuizzes, generateQuizzes, deleteQuiz, type Quiz } from '../../api/quiz';
+import { useConfirm } from '../../hooks/useConfirm';
 
 const difficultyMap = {
   easy: { label: '简单', color: 'bg-green-50 text-green-700' },
@@ -14,6 +15,7 @@ export function ProductQuizConfigPage() {
   const { productLineId } = useParams<{ productLineId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { confirm } = useConfirm();
   const [product, setProduct] = useState<ProductLine | null>(null);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export function ProductQuizConfigPage() {
 
   async function handleGenerate() {
     if (!productLineId) return;
-    if (!confirm('将基于产品资料AI生成10道练习题，此过程可能需要20-40秒，是否继续？')) return;
+    if (!await confirm({ title: 'AI 生成练习题', message: '将基于产品资料AI生成10道练习题，此过程可能需要20-40秒，是否继续？', variant: 'warning' })) return;
     setGenerating(true);
     setError('');
     setSuccess('');
@@ -77,7 +79,7 @@ export function ProductQuizConfigPage() {
   }
 
   async function handleDelete(quizId: string) {
-    if (!confirm('确定删除这道题目？')) return;
+    if (!await confirm({ message: '确定删除这道题目？', variant: 'danger' })) return;
     setDeletingId(quizId);
     try {
       const res = await deleteQuiz(quizId);

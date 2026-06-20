@@ -9,6 +9,8 @@ import { Card } from '../../components/ui/Card';
 import { Avatar } from '../../components/ui/Avatar';
 import { ScoreBadge } from '../../components/ui/ScoreBadge';
 import { Button } from '../../components/ui/Button';
+import { useConfirm } from '../../hooks/useConfirm';
+import { useToast } from '../../hooks/useToast';
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -75,6 +77,8 @@ function safeParseAnalysis(record: DebriefRecord): DebriefAnalysis | undefined {
 export function ProfilePage() {
   const navigate = useNavigate();
   const { user } = useAppStore();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
   const [history, setHistory] = useState<PracticeRecordItem[]>([]);
   const [debriefRecords, setDebriefRecords] = useState<DebriefRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,19 +147,19 @@ export function ProfilePage() {
   const handleRetryAsr = async (recordId: string) => {
     try {
       await retryAsr(recordId);
-      alert('重试已触发，请稍后刷新');
+      toast.success('重试已触发，请稍后刷新');
     } catch (err) {
-      alert(err instanceof Error ? err.message : '重试失败');
+      toast.error(err instanceof Error ? err.message : '重试失败');
     }
   };
 
   const handleDelete = async (recordId: string) => {
-    if (!confirm('确定要删除这条练习记录吗？删除后无法恢复。')) return;
+    if (!await confirm({ message: '确定要删除这条练习记录吗？删除后无法恢复。', variant: 'danger' })) return;
     try {
       await deletePractice(recordId);
       setHistory((prev) => prev.filter((h) => h.record_id !== recordId));
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     }
   };
 
@@ -432,7 +436,7 @@ export function ProfilePage() {
                   try {
                     const res = await changePassword(pwdForm.old, pwdForm.new);
                     if (res.code === 0) {
-                      alert('密码修改成功，请重新登录');
+                      toast.success('密码修改成功，请重新登录');
                       logout();
                       navigate('/login');
                     } else {

@@ -10,6 +10,8 @@ import {
   type ProductLine,
   type ProductAsset,
 } from '../../api/knowledge';
+import { useConfirm } from '../../hooks/useConfirm';
+import { useToast } from '../../hooks/useToast';
 
 function isDocOrVideo(a: ProductAsset) {
   const path = a.file_path.toLowerCase();
@@ -25,6 +27,8 @@ export function ProductDocsManagePage() {
   const { productLineId } = useParams<{ productLineId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
   const [product, setProduct] = useState<ProductLine | null>(null);
   const [assets, setAssets] = useState<ProductAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,27 +87,27 @@ export function ProductDocsManagePage() {
       if (res.code === 0) {
         await loadData();
       } else {
-        alert(res.message || '上传失败');
+        toast.error(res.message || '上传失败');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '上传失败');
+      toast.error(err instanceof Error ? err.message : '上传失败');
     } finally {
       setUploading(false);
     }
   }
 
   async function handleDelete(assetId: string) {
-    if (!confirm('确定删除该素材？')) return;
+    if (!await confirm({ message: '确定删除该素材？', variant: 'danger' })) return;
     setDeletingId(assetId);
     try {
       const res = await deleteAsset(assetId);
       if (res.code === 0) {
         setAssets((prev) => prev.filter((a) => a.asset_id !== assetId));
       } else {
-        alert(res.message || '删除失败');
+        toast.error(res.message || '删除失败');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : '删除失败');
     } finally {
       setDeletingId(null);
     }
