@@ -1,12 +1,14 @@
 import 'dotenv/config';
+import { initSentry, setupSentryErrorHandler } from './services/sentry';
 import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
-import { initDb } from './db';
+import { initDb, pool } from './db';
 import { errorHandler } from './middleware/error-handler';
+import { logger } from './services/logger';
 import authRouter from './routes/auth';
 import knowledgeRouter from './routes/knowledge';
 import trainingUnitsRouter from './routes/training-units';
@@ -15,6 +17,7 @@ import debriefsRouter from './routes/debriefs';
 import quizzesRouter from './routes/quizzes';
 
 const app = express();
+initSentry(app);
 const PORT = process.env.PORT || 3000;
 
 const CORS_ORIGINS = process.env.CORS_ORIGINS
@@ -112,18 +115,85 @@ app.use('/api/v1/settings', settingsRouter);
 app.use('/api/v1/debriefs', debriefsRouter);
 app.use('/api/v1/quizzes', quizzesRouter);
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  try {
+    await pool.execute('SELECT 1');
+    dbOk = true;
+  } catch { /* DB down */ }
+  const status = dbOk ? 'ok' : 'degraded';
+  const httpStatus = dbOk ? 200 : 503;
+  res.status(httpStatus).json({
+    status,
+    time: new Date().toISOString(),
+    checks: { database: dbOk ? 'ok' : 'unreachable' },
+  });
 });
+
+app.get('/ready', async (_req, res) => {
+  try {
+    await pool.execute('SELECT 1');
+    res.status(200).json({ status: 'ready' });
+  } catch {
+    res.status(503).json({ status: 'not ready' });
+  }
+});
+
+// Sentry error handler (before custom error handler)
+setupSentryErrorHandler(app);
 
 // Centralized error handler (must be last)
 app.use(errorHandler);
 
+function validateEnv(): void {
+  const required = ['JWT_SECRET'];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+  const warnings: string[] = [];
+  if (!process.env.OPENAI_API_KEY) warnings.push('OPENAI_API_KEY');
+  if (!process.env.DB_HOST) warnings.push('DB_HOST');
+  if (warnings.length > 0) {
+    console.warn(`[warn] Optional env vars not set: ${warnings.join(', ')} — some features may not work`);
+  }
+}
+
+function setupGracefulShutdown(server: ReturnType<typeof app.listen>): void {
+  let shuttingDown = false;
+
+  async function shutdown(signal: string): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
+
+    server.close((err) => {
+      if (err) console.error('[shutdown] Error closing HTTP server:', err);
+    });
+
+    try {
+      await pool.end();
+      console.log('[shutdown] Database pool closed');
+    } catch (err) {
+      console.error('[shutdown] Error closing DB pool:', err);
+    }
+
+    await logger.flush();
+    console.log('[shutdown] Graceful shutdown complete');
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
 async function main() {
+  validateEnv();
   await initDb();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Server listening on http://localhost:${PORT}`);
   });
+  setupGracefulShutdown(server);
 }
 
 main().catch((err) => {
