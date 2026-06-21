@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit2, Trash2, X, ImageIcon, FileText, Film, Package, Image, BookOpen, Sparkles, Loader2, Eye, Upload, CheckSquare, Square, Settings2, Mic, MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { register, getUserList, resetUserPassword, batchAssignManager, type UserListItem, type RegisterInput } from '../../api/auth';
@@ -33,7 +33,15 @@ import {
   deleteProductLine,
 } from '../../api/knowledge';
 
-export type AdminTab = 'knowledge' | 'assets' | 'users' | 'review' | 'config';
+import { getDashboard, getDailyStats, getErrors, getBackupStatus, type DashboardData, type DailyStat, type ErrorEntry, type BackupInfo } from '../../api/admin';
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export type AdminTab = 'knowledge' | 'assets' | 'users' | 'review' | 'config' | 'monitor';
 type KnowledgeSubTab = 'materials';
 
 function useProductLines() {
@@ -2419,6 +2427,200 @@ interface AdminDashboardProps {
   tab: AdminTab;
 }
 
+function StatCard({ label, value, sub, color }: { label: string; value: number; sub?: string; color: string }) {
+  const colors: Record<string, string> = {
+    blue: 'bg-blue-50 text-blue-700 border-blue-200',
+    green: 'bg-green-50 text-green-700 border-green-200',
+    purple: 'bg-purple-50 text-purple-700 border-purple-200',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+    slate: 'bg-gray-50 text-gray-700 border-gray-200',
+  };
+  return (
+    <div className={`rounded-xl border p-4 ${colors[color] || colors.slate}`}>
+      <div className="text-2xl font-bold">{value.toLocaleString()}</div>
+      <p className="text-xs mt-1 opacity-70">{label}</p>
+      {sub && <p className="text-xs mt-0.5 opacity-50">{sub}</p>}
+    </div>
+  );
+}
+
+function MonitorTab() {
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
+  const [errors, setErrors] = useState<ErrorEntry[]>([]);
+  const [backup, setBackup] = useState<BackupInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(7);
+
+  const fetchAll = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      getDashboard(),
+      getDailyStats(days),
+      getErrors(),
+      getBackupStatus(),
+    ])
+      .then(([d, s, e, b]) => {
+        if (d.code === 0 && d.data) setDashboard(d.data);
+        if (s.code === 0 && s.data) setDailyStats(s.data.days);
+        if (e.code === 0 && e.data) setErrors(e.data.errors);
+        if (b.code === 0 && b.data) setBackup(b.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [days]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const maxUsers = Math.max(1, ...dailyStats.map((d) => d.new_users));
+  const maxDebriefs = Math.max(1, ...dailyStats.map((d) => d.new_debriefs));
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-400">加载中...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ─── Stat Cards ─── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="用户总数" value={dashboard?.users.total ?? 0} sub={`活跃 ${dashboard?.users.active ?? 0}`} color="blue" />
+        <StatCard label="复盘记录" value={dashboard?.debriefs.total ?? 0} sub={`完成 ${dashboard?.debriefs.completed ?? 0}`} color="green" />
+        <StatCard label="AI 调用" value={dashboard?.ai_calls.total ?? 0} color="purple" />
+        <StatCard label="测验尝试" value={dashboard?.quizzes.attempts ?? 0} sub={dashboard?.quizzes.avg_correct_rate ? `正确率 ${dashboard.quizzes.avg_correct_rate}%` : undefined} color="amber" />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="产品线" value={dashboard?.knowledge.product_lines ?? 0} color="slate" />
+        <StatCard label="知识条目" value={dashboard?.knowledge.items ?? 0} color="slate" />
+        <StatCard label="话术" value={dashboard?.knowledge.scripts ?? 0} color="slate" />
+        <StatCard label="素材" value={dashboard?.knowledge.assets ?? 0} color="slate" />
+      </div>
+
+      {/* ─── Daily Trend Chart ─── */}
+      <div className="bg-white rounded-xl border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-900">每日趋势</h3>
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            {[7, 14, 30].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`px-3 py-1 text-xs rounded-md transition-colors ${days === d ? 'bg-white shadow-sm font-medium text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {d} 天
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-8">
+          <div>
+            <p className="text-xs text-gray-400 mb-3">新增用户</p>
+            <div className="flex items-end gap-1 h-32">
+              {dailyStats.map((d) => (
+                <div key={d.date} className="flex-1 flex flex-col items-center group relative">
+                  <div
+                    className="w-full bg-blue-200 rounded-t group-hover:bg-blue-400 transition-colors min-h-[2px]"
+                    style={{ height: `${(d.new_users / maxUsers) * 100}%` }}
+                  />
+                  <span className="text-[10px] text-gray-400 mt-1 whitespace-nowrap">
+                    {d.date.slice(5)}
+                  </span>
+                  <span className="absolute -top-5 text-[10px] font-medium text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {d.new_users}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-3">新增复盘</p>
+            <div className="flex items-end gap-1 h-32">
+              {dailyStats.map((d) => (
+                <div key={d.date} className="flex-1 flex flex-col items-center group relative">
+                  <div
+                    className="w-full bg-green-200 rounded-t group-hover:bg-green-400 transition-colors min-h-[2px]"
+                    style={{ height: `${(d.new_debriefs / maxDebriefs) * 100}%` }}
+                  />
+                  <span className="text-[10px] text-gray-400 mt-1 whitespace-nowrap">
+                    {d.date.slice(5)}
+                  </span>
+                  <span className="absolute -top-5 text-[10px] font-medium text-green-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {d.new_debriefs}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Recent Errors ─── */}
+      <div className="bg-white rounded-xl border p-6">
+        <h3 className="font-bold text-gray-900 mb-4">最近错误</h3>
+        {errors.length === 0 ? (
+          <p className="text-sm text-gray-400 py-4 text-center">暂无错误记录</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-400 border-b">
+                  <th className="pb-2 font-normal">时间</th>
+                  <th className="pb-2 font-normal">方法</th>
+                  <th className="pb-2 font-normal">路径</th>
+                  <th className="pb-2 font-normal">错误信息</th>
+                </tr>
+              </thead>
+              <tbody>
+                {errors.map((e, i) => (
+                  <tr key={i} className="border-b border-gray-50 last:border-0">
+                    <td className="py-2 text-gray-500 whitespace-nowrap">{e.time.slice(11, 19)}</td>
+                    <td className="py-2 text-gray-400">{e.method}</td>
+                    <td className="py-2 text-gray-400">{e.path}</td>
+                    <td className="py-2 text-gray-600 max-w-xs truncate" title={e.message}>{e.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Backup Status ─── */}
+      <div className="bg-white rounded-xl border p-6">
+        <h3 className="font-bold text-gray-900 mb-4">数据库备份</h3>
+        {backup?.latest ? (
+          <div className="flex items-center gap-6 text-sm">
+            <div>
+              <span className="text-gray-400">最近备份：</span>
+              <span className="text-gray-700 ml-1">{backup.latest.filename}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">大小：</span>
+              <span className="text-gray-700 ml-1">{formatBytes(backup.latest.size_bytes)}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">时间：</span>
+              <span className="text-gray-700 ml-1">{new Date(backup.latest.created_at).toLocaleString('zh-CN')}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">历史备份：</span>
+              <span className="text-gray-700 ml-1">{backup.total_count} 份，共 {formatBytes(backup.total_size_bytes)}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 py-4 text-center">暂无备份记录</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AdminDashboard({ tab }: AdminDashboardProps) {
   return (
     <div className="fade-in">
@@ -2427,6 +2629,7 @@ export function AdminDashboard({ tab }: AdminDashboardProps) {
       {tab === 'users' && <UsersTab />}
       {tab === 'review' && <ReviewTab />}
       {tab === 'config' && <ConfigTab />}
+      {tab === 'monitor' && <MonitorTab />}
     </div>
   );
 }

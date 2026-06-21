@@ -9,6 +9,7 @@ export function AdminLayout() {
     { key: 'knowledge', label: '知识库管理' },
     { key: 'assets', label: '产品素材' },
     { key: 'config', label: '系统配置' },
+    { key: 'monitor', label: '系统监控' },
   ];
 
   const hideTabs = location.pathname.includes('/assets/product/');

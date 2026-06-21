@@ -119,6 +119,7 @@ export default function App() {
             <Route index element={<Navigate to="users" replace />} />
             <Route path="users" element={<AdminDashboard tab="users" />} />
             <Route path="config" element={<AdminDashboard tab="config" />} />
+            <Route path="monitor" element={<AdminDashboard tab="monitor" />} />
             <Route path="team" element={<TeamListPage />} />
             <Route path="team/:id" element={<ReportDetailPage />} />
             <Route path="team/:id/debrief" element={<DebriefReportPage />} />
