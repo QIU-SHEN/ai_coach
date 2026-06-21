@@ -16,6 +16,8 @@ export const ERR_AUDIO_TOO_SHORT = { code: 400003, message: '产品介绍过短�
 export const ERR_POOR_AUDIO_QUALITY = { code: 400004, message: '音频质量不佳，请检查录音环境后重试' };
 export const ERR_RETRY_NOT_ALLOWED = { code: 400005, message: '仅失败记录可重试' };
 export const ERR_MISSING_PARAMS = { code: 400000, message: '缺少必要参数' };
+export const ERR_WEAK_PASSWORD = { code: 400014, message: '密码长度至少 8 位，且必须包含字母和数字' };
+export const ERR_TOKEN_REVOKED = { code: 401003, message: 'Token 已被注销' };
 
 // HTTP 403 Forbidden
 export const ERR_FORBIDDEN = { code: 403000, message: '无权访问' };

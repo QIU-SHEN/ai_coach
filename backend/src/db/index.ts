@@ -544,6 +544,19 @@ export async function initDb() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  // jwt_blacklist — token revocation
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS jwt_blacklist (
+      id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+      token_hash VARCHAR(64) NOT NULL,
+      user_id CHAR(36) NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_blacklist_hash (token_hash),
+      INDEX idx_blacklist_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   // Migration: add customer options fields for dialogue scenarios
   await pool.execute(`ALTER TABLE practice_records ADD COLUMN customer_knowledge VARCHAR(20) DEFAULT NULL`).catch(() => { /* column already exists */ });
   await pool.execute(`ALTER TABLE practice_records ADD COLUMN customer_type VARCHAR(20) DEFAULT NULL`).catch(() => { /* column already exists */ });

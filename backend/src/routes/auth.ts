@@ -1,16 +1,29 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { query } from '../db/query';
 import { generateToken, authMiddleware, type AuthRequest } from '../middleware/auth';
-import { AppError, ERR_MISSING_PARAMS, ERR_RECORD_NOT_FOUND, ERR_INTERNAL_SERVER } from '../constants/errors';
+import { AppError, ERR_MISSING_PARAMS, ERR_RECORD_NOT_FOUND, ERR_INTERNAL_SERVER, ERR_WEAK_PASSWORD } from '../constants/errors';
 import type { ApiResponse } from '../types';
 import { sendPasswordResetEmail } from '../services/mail';
 import { logger } from '../services/logger';
 
 const router = Router();
+
+function validatePasswordStrength(password: string): void {
+  if (password.length < 8) {
+    throw new AppError(400, ERR_WEAK_PASSWORD.code, ERR_WEAK_PASSWORD.message);
+  }
+  if (!/[a-zA-Z]/.test(password)) {
+    throw new AppError(400, ERR_WEAK_PASSWORD.code, '密码必须包含至少一个字母');
+  }
+  if (!/[0-9]/.test(password)) {
+    throw new AppError(400, ERR_WEAK_PASSWORD.code, '密码必须包含至少一个数字');
+  }
+}
 
 router.post('/register', async (req, res) => {
   const { username, password, name, role, employee_id, manager_id } = req.body;
@@ -21,9 +34,7 @@ router.post('/register', async (req, res) => {
   if (username.length < 3 || username.length > 50) {
     throw new AppError(400, 400006, '用户名长度应为 3-50 字符');
   }
-  if (password.length < 6) {
-    throw new AppError(400, 400007, '密码长度不能少于 6 位');
-  }
+  validatePasswordStrength(password);
   if (!['employee', 'manager', 'admin'].includes(role)) {
     throw new AppError(400, 400008, '角色必须是 employee / manager / admin');
   }
@@ -80,14 +91,30 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   res.json({ code: 0, data: rows[0] } as ApiResponse);
 });
 
+router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
+  const tokenHash = req.tokenHash;
+  if (!tokenHash) {
+    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 Token' } as ApiResponse);
+  }
+
+  const authHeader = req.headers.authorization!;
+  const decoded = jwt.decode(authHeader.slice(7)) as { exp: number } | null;
+  const expiresAt = decoded ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 3600 * 1000);
+
+  await pool.execute(
+    'INSERT INTO jwt_blacklist (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+    [tokenHash, req.user!.userId, expiresAt]
+  );
+
+  res.json({ code: 0, message: '已成功退出登录' } as ApiResponse);
+});
+
 router.post('/change-password', authMiddleware, async (req: AuthRequest, res) => {
   const { old_password, new_password } = req.body;
   if (!old_password || !new_password) {
     throw new AppError(400, ERR_MISSING_PARAMS.code, '缺少旧密码或新密码');
   }
-  if (new_password.length < 6) {
-    throw new AppError(400, 400007, '新密码长度不能少于 6 位');
-  }
+  validatePasswordStrength(new_password);
 
   const rows = await query('SELECT password_hash FROM users WHERE user_id = ?', [req.user!.userId]);
   if (!rows[0]) throw new AppError(404, ERR_RECORD_NOT_FOUND.code, ERR_RECORD_NOT_FOUND.message);
@@ -100,6 +127,19 @@ router.post('/change-password', authMiddleware, async (req: AuthRequest, res) =>
 
   const newHash = await bcrypt.hash(new_password, 10);
   await pool.execute('UPDATE users SET password_hash = ? WHERE user_id = ?', [newHash, req.user!.userId]);
+
+  // Invalidate current token after password change
+  const tokenHash = req.tokenHash;
+  if (tokenHash) {
+    const authHeader = req.headers.authorization!;
+    const decoded = jwt.decode(authHeader.slice(7)) as { exp: number } | null;
+    const expiresAt = decoded ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    await pool.execute(
+      'INSERT INTO jwt_blacklist (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+      [tokenHash, req.user!.userId, expiresAt]
+    );
+  }
+
   res.json({ code: 0, message: '密码修改成功' } as ApiResponse);
 });
 
@@ -189,7 +229,7 @@ router.post('/users/:id/reset-password', authMiddleware, async (req: AuthRequest
 
   const { id } = req.params;
   const { new_password } = req.body;
-  if (!new_password || new_password.length < 6) throw new AppError(400, 400007, '密码长度不能少于 6 位');
+  validatePasswordStrength(new_password);
 
   const rows = await query('SELECT 1 FROM users WHERE user_id = ?', [id]);
   if (rows.length === 0) throw new AppError(404, ERR_RECORD_NOT_FOUND.code, ERR_RECORD_NOT_FOUND.message);
@@ -244,7 +284,7 @@ router.get('/reset-password/verify', async (req, res) => {
 router.post('/reset-password', async (req, res) => {
   const { token, new_password } = req.body;
   if (!token || !new_password) throw new AppError(400, ERR_MISSING_PARAMS.code, '缺少令牌或新密码');
-  if (new_password.length < 6) throw new AppError(400, 400007, '密码长度不能少于 6 位');
+  validatePasswordStrength(new_password);
 
   const rows = await query(
     'SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0 AND expires_at > NOW()',
