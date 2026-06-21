@@ -31,7 +31,22 @@ import type { DebriefMode } from '../types';
 
 const router = Router();
 
-const upload = multer({ dest: 'uploads/tmp/' });
+const ALLOWED_MIMES_DEBRIEFS = [
+  'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/webm', 'audio/x-m4a',
+];
+const MAX_FILE_SIZE_DEBRIEFS = 100 * 1024 * 1024; // 100 MB
+
+const upload = multer({
+  dest: 'uploads/tmp/',
+  limits: { fileSize: MAX_FILE_SIZE_DEBRIEFS },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIMES_DEBRIEFS.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('音频格式不支持'));
+    }
+  },
+});
 
 const ALLOWED_EXTS = ['.mp3', '.wav', '.m4a', '.webm'];
 const MAX_SIZE_MB = 100;
@@ -75,7 +90,18 @@ async function resolveProductLineId(name: string | undefined, id: string | undef
 }
 
 // POST /debriefs — 创建复盘记录
-router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest, res) => {
+router.post('/', authMiddleware, (req: AuthRequest, res, next) => {
+  upload.single('audio')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ code: 400001, message: '文件大小超过100MB限制' } as ApiResponse);
+      }
+      if (err.message === '音频格式不支持') {
+        return res.status(400).json({ code: 400002, message: '格式不支持，请转换为mp3/wav/m4a后重新上传' } as ApiResponse);
+      }
+      return next(err);
+    }
+    (async () => {
   const userId = req.user!.userId;
   const { title, content, product_line_id, product_line, mode, practice_type, audio_type } = req.body;
   const debriefMode: DebriefMode =
@@ -104,7 +130,7 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
       return res.status(201).json({ code: 0, data: { record_id: recordId } } as ApiResponse);
     } catch (err) {
       logger.error('Debrief create error (simulation):', err);
-      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: err instanceof Error ? err.message : String(err) } as ApiResponse);
+      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
     }
   }
 
@@ -216,12 +242,6 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
       message: `不支持的音频格式：${ext}。仅支持 ${ALLOWED_EXTS.join(' / ')}`,
     } as ApiResponse);
   }
-  if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-    return res.status(400).json({
-      code: ERR_FILE_TOO_LARGE.code,
-      message: `音频文件过大，请压缩至 ${MAX_SIZE_MB}MB 以下`,
-    } as ApiResponse);
-  }
 
   try {
     const recordId = uuidv4();
@@ -292,6 +312,8 @@ router.post('/', authMiddleware, upload.single('audio'), async (req: AuthRequest
     logger.error('Debrief create error:', err);
     return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
+    })();
+  });
 });
 
 // GET /debriefs — 获取复盘列表
@@ -1406,8 +1428,7 @@ router.get('/:id/evaluation', authMiddleware, requireDebriefOwnerOrManager, asyn
     } as ApiResponse);
   } catch (err) {
     logger.error('Evaluation error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
