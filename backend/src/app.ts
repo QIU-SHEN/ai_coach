@@ -15,6 +15,7 @@ import trainingUnitsRouter from './routes/training-units';
 import settingsRouter from './routes/settings';
 import debriefsRouter from './routes/debriefs';
 import quizzesRouter from './routes/quizzes';
+import adminRouter from './routes/admin';
 
 const app = express();
 initSentry(app);
@@ -114,6 +115,7 @@ app.use('/api/v1/training', trainingUnitsRouter);
 app.use('/api/v1/settings', settingsRouter);
 app.use('/api/v1/debriefs', debriefsRouter);
 app.use('/api/v1/quizzes', quizzesRouter);
+app.use('/api/v1/admin', adminRouter);
 
 app.get('/health', async (_req, res) => {
   let dbOk = false;
