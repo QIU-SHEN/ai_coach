@@ -20,7 +20,25 @@ import { generateQuizzesForProduct, generateQuizzesForMaterial } from '../servic
 
 const router = Router();
 
-const upload = multer({ dest: path.resolve(process.cwd(), 'uploads/tmp') });
+const ALLOWED_MIMES_KNOWLEDGE = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'image/bmp', 'image/svg+xml',
+  'application/pdf',
+  'video/mp4',
+];
+const MAX_FILE_SIZE_KNOWLEDGE = 100 * 1024 * 1024; // 100 MB
+
+const upload = multer({
+  dest: path.resolve(process.cwd(), 'uploads/tmp'),
+  limits: { fileSize: MAX_FILE_SIZE_KNOWLEDGE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIMES_KNOWLEDGE.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('文件类型不支持'));
+    }
+  },
+});
 
 // Helper: uses shared query + auto-parse JSON fields (MariaDB longtext compatibility)
 async function query(sql: string, params?: any[]) {
@@ -491,47 +509,60 @@ router.get('/materials', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/materials', authMiddleware, requireRole('manager', 'admin'), upload.single('file'), async (req, res) => {
-  const { title, type, duration, description, tags } = req.body;
-  const file = req.file;
-
-  if (!title || !type) {
-    if (file) fs.unlinkSync(file.path);
-    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 title 或 type' } as ApiResponse);
-  }
-
-  let fileUrl: string | null = null;
-  if (file) {
-    try {
-      // 本地存储：将 multer 临时文件移动到 uploads/materials/
-      const ext = path.extname(file.originalname).slice(1) || 'bin';
-      const destDir = path.resolve(process.cwd(), 'uploads/materials');
-      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-      const destName = `${uuidv4()}.${ext}`;
-      const destPath = path.join(destDir, destName);
-      fs.renameSync(file.path, destPath);
-      fileUrl = `/uploads/materials/${destName}`;
-    } catch (err) {
-      logger.error('Material file save error:', err);
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-      return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '文件保存失败' } as ApiResponse);
+router.post('/materials', authMiddleware, requireRole('manager', 'admin'), (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ code: 400001, message: '文件大小超过100MB限制' } as ApiResponse);
+      }
+      if (err.message === '文件类型不支持') {
+        return res.status(400).json({ code: 400002, message: '格式不支持，请上传支持的图片、PDF或视频文件' } as ApiResponse);
+      }
+      return next(err);
     }
-  }
+    (async () => {
+      const { title, type, duration, description, tags } = req.body;
+      const file = req.file;
 
-  try {
-    const id = uuidv4();
-    const tagArray = tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [];
-    await pool.execute(
-      `INSERT INTO training_materials (material_id, title, type, duration, file_url, description, tags)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, title, type, duration || null, fileUrl, description || null, tagArray.length > 0 ? JSON.stringify(tagArray) : null]
-    );
-    const rows = await query('SELECT * FROM training_materials WHERE material_id = ?', [id]);
-    res.json({ code: 0, data: rows[0] } as ApiResponse);
-  } catch (err) {
-    logger.error('Materials create error:', err);
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
-  }
+      if (!title || !type) {
+        if (file) fs.unlinkSync(file.path);
+        return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 title 或 type' } as ApiResponse);
+      }
+
+      let fileUrl: string | null = null;
+      if (file) {
+        try {
+          // 本地存储：将 multer 临时文件移动到 uploads/materials/
+          const ext = path.extname(file.originalname).slice(1) || 'bin';
+          const destDir = path.resolve(process.cwd(), 'uploads/materials');
+          if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+          const destName = `${uuidv4()}.${ext}`;
+          const destPath = path.join(destDir, destName);
+          fs.renameSync(file.path, destPath);
+          fileUrl = `/uploads/materials/${destName}`;
+        } catch (err) {
+          logger.error('Material file save error:', err);
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+          return res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: '文件保存失败' } as ApiResponse);
+        }
+      }
+
+      try {
+        const id = uuidv4();
+        const tagArray = tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [];
+        await pool.execute(
+          `INSERT INTO training_materials (material_id, title, type, duration, file_url, description, tags)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [id, title, type, duration || null, fileUrl, description || null, tagArray.length > 0 ? JSON.stringify(tagArray) : null]
+        );
+        const rows = await query('SELECT * FROM training_materials WHERE material_id = ?', [id]);
+        res.json({ code: 0, data: rows[0] } as ApiResponse);
+      } catch (err) {
+        logger.error('Materials create error:', err);
+        res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+      }
+    })();
+  });
 });
 
 router.put('/materials/:id', authMiddleware, requireRole('manager', 'admin'), async (req, res) => {
@@ -721,54 +752,67 @@ router.get('/product-assets/:asset_id/file', async (req, res) => {
 });
 
 // Upload single product asset
-router.post('/product-assets/upload', authMiddleware, requireRole('manager', 'admin'), upload.single('file'), async (req, res) => {
-  const { product_line_id, asset_type, title } = req.body;
-  const file = req.file;
+router.post('/product-assets/upload', authMiddleware, requireRole('manager', 'admin'), (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ code: 400001, message: '文件大小超过100MB限制' } as ApiResponse);
+      }
+      if (err.message === '文件类型不支持') {
+        return res.status(400).json({ code: 400002, message: '格式不支持，请转换为mp3/wav/m4a后重新上传' } as ApiResponse);
+      }
+      return next(err);
+    }
+    (async () => {
+      const { product_line_id, asset_type, title } = req.body;
+      const file = req.file;
 
-  if (!file) {
-    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 file' } as ApiResponse);
-  }
-  if (!product_line_id || !asset_type) {
-    // clean up uploaded temp file
-    fs.unlinkSync(file.path);
-    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 product_line_id 或 asset_type' } as ApiResponse);
-  }
+      if (!file) {
+        return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 file' } as ApiResponse);
+      }
+      if (!product_line_id || !asset_type) {
+        // clean up uploaded temp file
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 product_line_id 或 asset_type' } as ApiResponse);
+      }
 
-  const validTypes = ['brochure', 'detail_page', 'image', 'video', 'manual', 'packaging', 'banner'];
-  if (!validTypes.includes(asset_type)) {
-    fs.unlinkSync(file.path);
-    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: `asset_type 无效，可选: ${validTypes.join('/')}` } as ApiResponse);
-  }
+      const validTypes = ['brochure', 'detail_page', 'image', 'video', 'manual', 'packaging', 'banner'];
+      if (!validTypes.includes(asset_type)) {
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: `asset_type 无效，可选: ${validTypes.join('/')}` } as ApiResponse);
+      }
 
-  try {
-    const assetId = uuidv4();
-    // multer on Windows encodes originalname as Latin1, re-decode to UTF-8
-    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf-8');
-    const ext = path.extname(originalName) || path.extname(file.filename || '') || '';
+      try {
+        const assetId = uuidv4();
+        // multer on Windows encodes originalname as Latin1, re-decode to UTF-8
+        const originalName = Buffer.from(file.originalname, 'latin1').toString('utf-8');
+        const ext = path.extname(originalName) || path.extname(file.filename || '') || '';
 
-    // Upload to OSS
-    const ossUrl = await saveUpload(file.path, assetId, ext.replace('.', ''), 'assets');
+        // Upload to OSS
+        const ossUrl = await saveUpload(file.path, assetId, ext.replace('.', ''), 'assets');
 
-    const assetTitle = title || path.basename(originalName, ext);
+        const assetTitle = title || path.basename(originalName, ext);
 
-    await pool.execute(
-      `INSERT INTO product_assets (asset_id, product_line_id, title, asset_type, file_path, file_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-      [assetId, product_line_id, assetTitle, asset_type, ossUrl, ossUrl]
-    );
+        await pool.execute(
+          `INSERT INTO product_assets (asset_id, product_line_id, title, asset_type, file_path, file_url, status)
+           VALUES (?, ?, ?, ?, ?, ?, 'active')`,
+          [assetId, product_line_id, assetTitle, asset_type, ossUrl, ossUrl]
+        );
 
-    const rows = await query(
-      `SELECT asset_id, product_line_id, title, asset_type, file_path, status, created_at FROM product_assets WHERE asset_id = ?`,
-      [assetId]
-    );
+        const rows = await query(
+          `SELECT asset_id, product_line_id, title, asset_type, file_path, status, created_at FROM product_assets WHERE asset_id = ?`,
+          [assetId]
+        );
 
-    res.json({ code: 0, data: rows[0] } as ApiResponse);
-  } catch (err) {
-    logger.error('Asset upload error:', err);
-    // clean up on failure
-    if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
-  }
+        res.json({ code: 0, data: rows[0] } as ApiResponse);
+      } catch (err) {
+        logger.error('Asset upload error:', err);
+        // clean up on failure
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
+      }
+    })();
+  });
 });
 
 // Delete single product asset
@@ -833,8 +877,7 @@ router.post('/product-lines/:product_line_id/ai-summarize', authMiddleware, requ
     res.json({ code: 0, data: result } as ApiResponse);
   } catch (err) {
     logger.error('AI summarize error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
@@ -863,8 +906,7 @@ router.post('/product-lines/:product_line_id/ai-classify', authMiddleware, requi
     res.json({ code: 0, data: result } as ApiResponse);
   } catch (err) {
     logger.error('AI classify error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
@@ -879,8 +921,7 @@ router.post('/product-lines/:product_line_id/ai-tag', authMiddleware, requireRol
     res.json({ code: 0, data: { categories: result } } as ApiResponse);
   } catch (err) {
     logger.error('AI tag error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
@@ -894,8 +935,7 @@ router.post('/product-lines/:product_line_id/ai-extract-texts', authMiddleware, 
     res.json({ code: 0, data: result } as ApiResponse);
   } catch (err) {
     logger.error('AI extract texts error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
@@ -908,8 +948,7 @@ router.post('/product-lines/:product_line_id/generate-description', authMiddlewa
     res.json({ code: 0, data: { description } } as ApiResponse);
   } catch (err) {
     logger.error('Generate description error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
@@ -1014,8 +1053,7 @@ ${itemsList}
     res.json({ code: 0, data: { groups, total_groups: groups.length, total_duplicates: totalDuplicates } } as ApiResponse);
   } catch (err) {
     logger.error('Dedup error:', err);
-    const message = err instanceof Error ? err.message : ERR_INTERNAL_SERVER.message;
-    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message } as ApiResponse);
+    res.status(500).json({ code: ERR_INTERNAL_SERVER.code, message: ERR_INTERNAL_SERVER.message } as ApiResponse);
   }
 });
 
