@@ -146,11 +146,7 @@ setupSentryErrorHandler(app);
 app.use(errorHandler);
 
 function validateEnv(): void {
-  const required = ['JWT_SECRET'];
-  const missing = required.filter(k => !process.env[k]);
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-  }
+  // Note: JWT_SECRET is enforced at import-time by middleware/auth.ts
   const warnings: string[] = [];
   if (!process.env.OPENAI_API_KEY) warnings.push('OPENAI_API_KEY');
   if (!process.env.DB_HOST) warnings.push('DB_HOST');
@@ -167,8 +163,11 @@ function setupGracefulShutdown(server: ReturnType<typeof app.listen>): void {
     shuttingDown = true;
     console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
 
-    server.close((err) => {
-      if (err) console.error('[shutdown] Error closing HTTP server:', err);
+    await new Promise<void>((resolve) => {
+      server.close((err) => {
+        if (err) console.error('[shutdown] Error closing HTTP server:', err);
+        resolve();
+      });
     });
 
     try {

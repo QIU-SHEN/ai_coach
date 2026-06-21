@@ -38,6 +38,6 @@ export const logger = {
   },
   flush: (): Promise<void> => new Promise((resolve) => {
     pinoLogger.flush();
-    setImmediate(resolve);
+    resolve();
   }),
 };

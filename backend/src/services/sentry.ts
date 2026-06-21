@@ -1,9 +1,10 @@
+import type { Express } from 'express';
 import * as Sentry from '@sentry/node';
 
 const SENTRY_DSN = process.env.SENTRY_DSN;
 let initialized = false;
 
-export function initSentry(app: any): void {
+export function initSentry(app: Express): void {
   if (!SENTRY_DSN) return;
   Sentry.init({
     dsn: SENTRY_DSN,
@@ -14,12 +15,12 @@ export function initSentry(app: any): void {
   initialized = true;
 }
 
-export function setupSentryErrorHandler(app: any): void {
+export function setupSentryErrorHandler(app: Express): void {
   if (initialized) {
     Sentry.setupExpressErrorHandler(app);
   }
 }
 
 export function captureException(err: Error, context?: Record<string, unknown>): void {
-  if (initialized) Sentry.captureException(err, { extra: context });
+  Sentry.captureException(err, { extra: context });
 }
