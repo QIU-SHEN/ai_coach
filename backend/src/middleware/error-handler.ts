@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../constants/errors';
 import type { ApiResponse } from '../types';
 import { logger } from '../services/logger';
+import { captureException } from '../services/sentry';
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof AppError) {
@@ -11,6 +12,12 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     } as ApiResponse);
     return;
   }
+
+  captureException(err, {
+    code: err instanceof AppError ? err.code : undefined,
+    path: _req.path,
+    method: _req.method,
+  });
 
   logger.error('Unhandled error:', err);
   res.status(500).json({
