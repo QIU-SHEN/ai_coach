@@ -2,6 +2,7 @@ import 'dotenv/config';
 import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
 import { initDb } from './db';
@@ -16,14 +17,19 @@ import quizzesRouter from './routes/quizzes';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(
-  cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174', 'https://qiushen.top'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  })
-);
+const CORS_ORIGINS = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+  : ['http://localhost:5173', 'http://127.0.0.1:5173',
+     'http://localhost:5174', 'http://127.0.0.1:5174',
+     'https://qiushen.top'];
+
+app.use(cors({
+  origin: CORS_ORIGINS,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
+app.use(helmet());
 app.use(express.json());
 
 // 全局限流：200 次/分钟
@@ -34,6 +40,19 @@ app.use(rateLimit({
   legacyHeaders: false,
   message: { code: 429, message: '请求过于频繁，请稍后重试' },
 }));
+
+// 认证端点限流：10 次/15 分钟
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { code: 429, message: '请求过于频繁，请 15 分钟后再试' },
+});
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/v1/auth/forgot-password', authLimiter);
+app.use('/api/v1/auth/reset-password', authLimiter);
 
 // 上传接口限流：5 次/分钟（防止大文件批量上传耗尽资源）
 app.use('/api/v1/knowledge/product-assets/upload', rateLimit({
@@ -57,8 +76,11 @@ app.use('/api/v1/debriefs/:id/dialogue-training', aiDialogueLimit);
 const uploadsStatic = path.resolve(process.cwd(), 'uploads');
 
 app.use('/uploads', (req, res, next) => {
-  // 设置 CORS 头，确保跨域 iframe 可以加载
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // 设置 CORS 头，仅允许配置的源，确保跨域 iframe 可以加载
+  const requestOrigin = req.headers.origin;
+  if (requestOrigin && CORS_ORIGINS.includes(requestOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+  }
   res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
 }, express.static(uploadsStatic, {
