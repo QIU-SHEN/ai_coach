@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { pool } from '../db';
+import { ERR_TOKEN_REVOKED } from '../constants/errors';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
@@ -20,6 +21,7 @@ export interface AuthRequest extends Request {
     role: string;
   };
   tokenHash?: string;
+  tokenExp?: number;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -32,7 +34,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
   const token = authHeader.slice(7);
 
   try {
-    const decoded = jwt.verify(token, secret) as { userId: string; username: string; role: string };
+    const decoded = jwt.verify(token, secret) as { userId: string; username: string; role: string; exp?: number };
 
     // Check blacklist
     const tokenHash = hashToken(token);
@@ -41,12 +43,13 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       [tokenHash]
     );
     if (rows.length > 0) {
-      res.status(401).json({ code: 401003, message: 'Token 已被注销' });
+      res.status(401).json({ code: ERR_TOKEN_REVOKED.code, message: ERR_TOKEN_REVOKED.message });
       return;
     }
 
     req.user = decoded;
     req.tokenHash = tokenHash;
+    req.tokenExp = decoded.exp;
     next();
   } catch {
     res.status(401).json({ code: 401001, message: 'Token 无效或已过期' });

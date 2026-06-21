@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { pool } from '../db';
@@ -12,6 +11,16 @@ import { sendPasswordResetEmail } from '../services/mail';
 import { logger } from '../services/logger';
 
 const router = Router();
+
+async function blacklistToken(req: AuthRequest): Promise<void> {
+  const expiresAt = req.tokenExp
+    ? new Date(req.tokenExp * 1000)
+    : new Date(Date.now() + 7 * 24 * 3600 * 1000);
+  await pool.execute(
+    'INSERT INTO jwt_blacklist (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+    [req.tokenHash!, req.user!.userId, expiresAt]
+  );
+}
 
 function validatePasswordStrength(password: string): void {
   if (password.length < 8) {
@@ -92,20 +101,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
 });
 
 router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
-  const tokenHash = req.tokenHash;
-  if (!tokenHash) {
-    return res.status(400).json({ code: ERR_MISSING_PARAMS.code, message: '缺少 Token' } as ApiResponse);
-  }
-
-  const authHeader = req.headers.authorization!;
-  const decoded = jwt.decode(authHeader.slice(7)) as { exp: number } | null;
-  const expiresAt = decoded ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 3600 * 1000);
-
-  await pool.execute(
-    'INSERT INTO jwt_blacklist (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
-    [tokenHash, req.user!.userId, expiresAt]
-  );
-
+  await blacklistToken(req);
   res.json({ code: 0, message: '已成功退出登录' } as ApiResponse);
 });
 
@@ -128,17 +124,7 @@ router.post('/change-password', authMiddleware, async (req: AuthRequest, res) =>
   const newHash = await bcrypt.hash(new_password, 10);
   await pool.execute('UPDATE users SET password_hash = ? WHERE user_id = ?', [newHash, req.user!.userId]);
 
-  // Invalidate current token after password change
-  const tokenHash = req.tokenHash;
-  if (tokenHash) {
-    const authHeader = req.headers.authorization!;
-    const decoded = jwt.decode(authHeader.slice(7)) as { exp: number } | null;
-    const expiresAt = decoded ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 3600 * 1000);
-    await pool.execute(
-      'INSERT INTO jwt_blacklist (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
-      [tokenHash, req.user!.userId, expiresAt]
-    );
-  }
+  await blacklistToken(req); // Invalidate current token after password change
 
   res.json({ code: 0, message: '密码修改成功' } as ApiResponse);
 });
